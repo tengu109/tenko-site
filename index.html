@@ -4,9 +4,12 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>TENKO！</title>
-<script src="https://cdn.jsdelivr.net/npm/[email protected]/dist/xlsx.full.min.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+
+<!-- Firebase SDK (v9/v10 Compat版) -->
+<script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+
 <style>
 :root{
   --bg:#FFFFFF;
@@ -133,8 +136,6 @@ table.duty2 td.total-col{font-weight:700;background:var(--lemon-pale);}
 .badge-tag{display:inline-block;background:var(--lemon);color:var(--teal-deep);font-size:10px;font-weight:700;border-radius:6px;padding:1px 6px;margin-left:4px;vertical-align:middle;}
 .badge-toggle{display:inline-block;border:1px solid var(--line);border-radius:6px;padding:2px 8px;font-size:11px;font-weight:700;cursor:pointer;margin:2px 4px 2px 0;}
 .badge-toggle.on{background:var(--lemon);border-color:var(--lemon-deep);color:var(--teal-deep);}
-.graduate-item{opacity:.7;}
-.graduate-name{color:#8C9384;font-weight:700;}
 .modal-overlay{position:fixed;inset:0;background:rgba(32,41,31,.55);display:none;align-items:center;justify-content:center;z-index:400;}
 .modal-overlay.show{display:flex;}
 .modal-box{background:#fff;border-radius:16px;padding:22px;width:82%;max-width:320px;}
@@ -159,9 +160,9 @@ table.duty2 td.total-col{font-weight:700;background:var(--lemon-pale);}
     <div class="tab" data-tab="overview"><span class="tab-icon">📊</span>今後の予定</div>
     <div class="tab locked" data-tab="admin"><span class="tab-icon">🔑</span>管理者<span id="adminLock">🔒</span></div>
   </div>
-  <div class="screen active" id="screen-input"><div class="empty"><div class="big">⏳</div>読み込み中…</div></div>
-  <div class="screen" id="screen-overview"><div class="empty"><div class="big">⏳</div>読み込み中…</div></div>
-  <div class="screen" id="screen-admin"><div class="empty"><div class="big">⏳</div>読み込み中…</div></div>
+  <div class="screen active" id="screen-input"></div>
+  <div class="screen" id="screen-overview"></div>
+  <div class="screen" id="screen-admin"></div>
 </div>
 <div class="toast" id="toast"></div>
 <div class="modal-overlay" id="pcModal">
@@ -175,29 +176,35 @@ table.duty2 td.total-col{font-weight:700;background:var(--lemon-pale);}
     </div>
   </div>
 </div>
-<div class="modal-overlay" id="confirmModal">
-  <div class="modal-box">
-    <h3>確認</h3>
-    <p id="confirmMessage"></p>
-    <div class="modal-actions">
-      <button class="btn btn-ghost" onclick="closeConfirmModal()">キャンセル</button>
-      <button class="btn btn-danger" id="confirmActionBtn">削除する</button>
-    </div>
-  </div>
-</div>
 
 <script>
 /* =========================================================
-   STATE & STORAGE
+   FIREBASE INITIALIZATION
 ========================================================= */
-let members = [];        // {id,name,furigana,grade,gradeValue,joinDate(YYYY-MM)}
-let guardians = [];      // {id,name,memberId}
-let events = [];         // {id,date,endTime,title,type,location,status,dutyTarget,dutyGuardianIds:[]}
-let locations = [];      // {id,name} predefined location list managed by admin
+const firebaseConfig = {
+  apiKey: "AIzaSyBseUMzhgsptK2cMoeOIlaYbWaiKXkUn_0",
+  authDomain: "tenko109.firebaseapp.com",
+  projectId: "tenko109",
+  storageBucket: "tenko109.firebasestorage.app",
+  messagingSenderId: "562153147637",
+  appId: "1:562153147637:web:78088d8cc1f22d89bb49bc"
+};
+
+// Firebase 初期化
+firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
+
+/* =========================================================
+   STATE & DATA ACCESS LAYER (Firestore)
+========================================================= */
+let members = [];
+let guardians = [];
+let events = [];
+let locations = [];
 let attendance = {};
-let dutyAttendance = {}; // open duty-availability poll, ALL guardians can answer
-let dutyBadges = [];     // {code,label} extensible badge master list (未/兼 etc.)
-let archivedFiscalYears = []; // [2024, 2025, ...] years locked to read-only
+let dutyAttendance = {};
+let dutyBadges = [];
+let archivedFiscalYears = [];
 let adminPasscode = '0000';
 let isAdmin = false;
 let pendingTab = null;
@@ -224,52 +231,41 @@ function isNotPast(dateStr){
   return d >= today;
 }
 
-/* =========================================================
-   DATA ACCESS LAYER (Firebase Firestore版)
-   ↓↓↓ ここにあなたのFirebaseプロジェクトの設定値を貼り付けてください ↓↓↓
-   Firebaseコンソール → プロジェクトの設定 → 全般 → マイアプリ(Web)
-   → 「SDK の設定と構成」に表示される firebaseConfig をコピペします。
-========================================================= */
-const FIREBASE_CONFIG = {
-  apiKey: "ここにapiKeyを貼り付け",
-  authDomain: "your-project.firebaseapp.com",
-  projectId: "your-project-id",
-  storageBucket: "your-project.appspot.com",
-  messagingSenderId: "000000000000",
-  appId: "1:000000000000:web:xxxxxxxxxxxxxxxx"
-};
-let db = null;
-if(typeof firebase === 'undefined'){
-  // FirebaseのCDNスクリプトが読み込めなかった場合、ここで気づけるようにする
-  document.addEventListener('DOMContentLoaded', ()=>{
-    document.getElementById('app').innerHTML = `<div style="padding:40px 20px;text-align:center;color:#B23A26;">
-      <div style="font-size:34px;margin-bottom:8px;">⚠️</div>
-      Firebaseの読み込みに失敗しました。<br>通信環境や広告ブロック機能をご確認のうえ、ページを再読み込みしてください。
-    </div>`;
-  });
-}else{
-  firebase.initializeApp(FIREBASE_CONFIG);
-  db = firebase.firestore();
-}
-const TENKO_COLLECTION = 'tenko_data'; // このコレクション名の中にmembers/eventsなどのドキュメントが並びます
-
-/* すべての永続化はこの DataStore だけを通す。
-   以前はwindow.storage（Claudeアーティファクト専用機能）を使っていましたが、
-   ここをFirestoreに差し替えただけで、他の画面・ロジックのコードは
-   一切変更していません。これが前回の「DataStoreに窓口を一本化する」
-   リファクタリングの狙いでした。 */
+// Firestore データ操作ヘルパー
 const DataStore = {
   async get(key, fallback){
     try{
-      const doc = await db.collection(TENKO_COLLECTION).doc(key).get();
+      const doc = await db.collection('app_data').doc(key).get();
       return doc.exists ? doc.data().value : fallback;
-    }catch(e){ console.error('DataStore.get error:', key, e); return fallback; }
+    }catch(e){ console.error(e); return fallback; }
   },
   async set(key, value){
-    try{ await db.collection(TENKO_COLLECTION).doc(key).set({ value }); return true; }
-    catch(e){ console.error('DataStore.set error:', key, e); showToast('保存に失敗しました（通信をご確認ください）'); return null; }
+    try{
+      await db.collection('app_data').doc(key).set({ value: value });
+      return true;
+    }catch(e){ console.error(e); showToast('保存に失敗しました'); return null; }
   }
 };
+
+// リアルタイム同期設定 (Firestoreの変更を自動検知して画面更新)
+function setupRealtimeListeners(){
+  db.collection('app_data').onSnapshot(snapshot => {
+    snapshot.docChanges().forEach(change => {
+      const data = change.doc.data().value;
+      const key = change.doc.id;
+      if(key === 'members') members = data || [];
+      if(key === 'guardians') guardians = data || [];
+      if(key === 'events') events = data || [];
+      if(key === 'locations') locations = data || [];
+      if(key === 'attendance') attendance = data || {};
+      if(key === 'duty_attendance') dutyAttendance = data || {};
+      if(key === 'duty_badges') dutyBadges = data || [];
+      if(key === 'archived_fiscal_years') archivedFiscalYears = data || [];
+      if(key === 'admin_passcode') adminPasscode = data || '0000';
+    });
+    renderAll();
+  });
+}
 
 async function loadAll(){
   members = await DataStore.get('members', []);
@@ -302,44 +298,10 @@ async function loadAll(){
     await saveDutyBadges();
   }
   archivedFiscalYears = await DataStore.get('archived_fiscal_years', []);
-  await maybeAdvanceGrades();
   renderAll();
+  setupRealtimeListeners();
 }
 
-/* =========================================================
-   新年度になったら学年を自動で1つ進める。
-   6年生（gradeValue=6）が進級すると「小天狗卒業生」として
-   卒業生欄に移動し、以後は通常の名簿・出欠画面には出てきません
-   （削除ボタンはそのまま残るので、後で名簿から完全に消せます）。
-========================================================= */
-async function maybeAdvanceGrades(){
-  const curFY = currentFiscalYear();
-  let lastFY = await DataStore.get('grade_advance_fy', null);
-  if(lastFY === null){
-    // 初回起動時は「今の学年をそのまま今年度の基準」として記録するだけにし、
-    // 既存の名簿をいきなり進級させてしまわないようにする。
-    await DataStore.set('grade_advance_fy', curFY);
-    return;
-  }
-  if(lastFY < curFY){
-    let advanced = 0, graduated = 0;
-    members.forEach(m=>{
-      if(m.isGraduate) return;
-      m.gradeValue = (m.gradeValue||0) + 1;
-      advanced++;
-      if(m.gradeValue > 6){
-        m.isGraduate = true;
-        m.grade = '小天狗卒業生';
-        graduated++;
-      }
-    });
-    if(advanced>0){
-      await saveMembers();
-      showToast(`新年度：${advanced}名の学年を進級しました（卒業${graduated}名）`);
-    }
-    await DataStore.set('grade_advance_fy', curFY);
-  }
-}
 async function saveMembers(){ await DataStore.set('members', members); }
 async function saveGuardians(){ await DataStore.set('guardians', guardians); }
 async function saveEvents(){ await DataStore.set('events', events); }
@@ -365,21 +327,12 @@ function fmtDateShort(dt){
 function fmtTime(dt){ const d = new Date(dt); if(isNaN(d)) return ''; return `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`; }
 function fmtEventWhen(ev){ return `${fmtDateShort(ev.date)} ${fmtTime(ev.date)}${ev.endTime?('〜'+ev.endTime):''}`; }
 function sortedMembers(){
-  return [...members].filter(m=>!m.isGraduate).sort((a,b)=>{
+  return [...members].sort((a,b)=>{
     if((b.gradeValue||0) !== (a.gradeValue||0)) return (b.gradeValue||0)-(a.gradeValue||0);
     const da = a.joinDate ? new Date(a.joinDate+'-01') : new Date(0);
     const db = b.joinDate ? new Date(b.joinDate+'-01') : new Date(0);
     return da - db;
   });
-}
-function sortedGraduates(){
-  return members.filter(m=>m.isGraduate).sort((a,b)=> (a.name||'').localeCompare(b.name||'', 'ja'));
-}
-function fmtYearMonth(ym){
-  if(!ym) return '';
-  const parts = String(ym).split('-');
-  if(parts.length<2) return ym;
-  return `${parseInt(parts[0],10)}年${parseInt(parts[1],10)}月`;
 }
 function guardianMemberIds(g){ return g.memberIds || (g.memberId ? [g.memberId] : []); }
 function guardianChildLabel(g){
@@ -417,7 +370,7 @@ function locationFieldHtml(idSuffix, currentValue){
       ${options}
       <option value="__other__" ${isOtherActive?'selected':''}>その他（自由入力）</option>
     </select>
-    <input id="locOther_${idSuffix}" class="note-input" style="margin-top:6px;${isOtherActive?'':'display:none;'}" placeholder="例：座・高円寺　阿波踊りホール" value="${isOtherActive?escapeHtml(currentValue):''}">`;
+    <input id="locOther_${idSuffix}" class="note-input" style="margin-top:6px;${isOtherActive?'':'display:none;'}" placeholder="例：座・高円寺 阿波踊りホール" value="${isOtherActive?escapeHtml(currentValue):''}">`;
 }
 window.onLocationChange = function(idSuffix){
   const sel = document.getElementById('loc_'+idSuffix);
@@ -453,18 +406,6 @@ function activateTab(name){
 }
 function openPcModal(){ document.getElementById('pcInput').value=''; document.getElementById('pcModal').classList.add('show'); }
 window.closePcModal = function(){ document.getElementById('pcModal').classList.remove('show'); pendingTab=null; }
-let pendingConfirmCallback = null;
-window.confirmAndDelete = function(message, callback){
-  document.getElementById('confirmMessage').textContent = message;
-  pendingConfirmCallback = callback;
-  document.getElementById('confirmModal').classList.add('show');
-}
-window.closeConfirmModal = function(){ document.getElementById('confirmModal').classList.remove('show'); pendingConfirmCallback = null; }
-document.getElementById('confirmActionBtn').addEventListener('click', function(){
-  const cb = pendingConfirmCallback;
-  window.closeConfirmModal();
-  if(cb) cb();
-});
 window.submitPasscode = function(){
   const val = document.getElementById('pcInput').value;
   if(val === adminPasscode){
@@ -672,7 +613,7 @@ window.toggleDutyBadge = async function(eventId, guardianId, code){
 }
 
 /* =========================================================
-   出欠調整 (決定した予定の結果を閲覧／お当番出欠依頼欄は自動で非表示)
+   出欠調整
 ========================================================= */
 function renderOverview(){
   const el = document.getElementById('screen-overview');
@@ -785,7 +726,7 @@ function adminMembersHtml(){
       <div class="field"><label>ふりがな</label><input id="mFuri" placeholder="例：てんぐはなこ"></div>
       <div class="field"><label>学年（表示用）</label><input id="mGrade" placeholder="例：年長、1年、5年"></div>
       <div class="field"><label>学年数値（0以下で ◉ が付きます。年長=0、未就学=-1 など）</label><input id="mGradeVal" type="number" placeholder="例：5"></div>
-      <div class="field"><label>入連日（西暦年月）</label><input id="mJoinDate" type="month"></div>
+      <div class="field"><label>入連日（年月のみ。同学年内の並び順に使用）</label><input id="mJoinDate" type="month"></div>
       <button class="btn btn-primary btn-block" onclick="addMember()">＋ メンバーを追加</button>
     </div>`;
   if(members.length){
@@ -794,24 +735,8 @@ function adminMembersHtml(){
       const isEditing = uiState.adminEditingMember===m.id;
       html += `<div class="list-item" onclick="toggleEditMember('${m.id}')" style="flex-direction:column;align-items:stretch;">
         <div style="display:flex;justify-content:space-between;align-items:center;">
-          <div><span class="member-name">${displayName(m)}</span><br><span class="muted">${escapeHtml(m.grade||'')}${m.joinDate?(' ・入連 '+fmtYearMonth(m.joinDate)):''}</span></div>
-          <button onclick="event.stopPropagation();confirmAndDelete('『${escapeHtml(m.name)}』を名簿から削除しますか？この操作は取り消せません。', function(){ deleteMember('${m.id}'); })" style="color:var(--coral);background:none;border:none;cursor:pointer;font-size:16px;">✕</button>
-        </div>
-        ${isEditing ? renderMemberEditPanel(m) : ''}
-      </div>`;
-    });
-    html += `</div>`;
-  }
-  const graduates = sortedGraduates();
-  if(graduates.length){
-    html += `<div class="section-title">卒業生欄（小天狗卒業生）</div>`;
-    html += `<div class="card">`;
-    graduates.forEach(m=>{
-      const isEditing = uiState.adminEditingMember===m.id;
-      html += `<div class="list-item graduate-item" onclick="toggleEditMember('${m.id}')" style="flex-direction:column;align-items:stretch;">
-        <div style="display:flex;justify-content:space-between;align-items:center;">
-          <div><span class="member-name graduate-name">${escapeHtml(m.name)}</span><br><span class="muted">小天狗卒業生${m.joinDate?(' ・入連 '+fmtYearMonth(m.joinDate)):''}</span></div>
-          <button onclick="event.stopPropagation();confirmAndDelete('『${escapeHtml(m.name)}』を名簿から完全に削除しますか？この操作は取り消せません。', function(){ deleteMember('${m.id}'); })" style="color:var(--coral);background:none;border:none;cursor:pointer;font-size:16px;">✕</button>
+          <div><span class="member-name">${displayName(m)}</span><br><span class="muted">${escapeHtml(m.grade||'')}${m.joinDate?(' ・入連 '+escapeHtml(m.joinDate)):''}</span></div>
+          <button onclick="event.stopPropagation();deleteMember('${m.id}')" style="color:var(--coral);background:none;border:none;cursor:pointer;font-size:16px;">✕</button>
         </div>
         ${isEditing ? renderMemberEditPanel(m) : ''}
       </div>`;
@@ -826,18 +751,9 @@ function renderMemberEditPanel(m){
     <div class="field"><label>ふりがな</label><input id="editMFuri_${m.id}" value="${escapeHtml(m.furigana||'')}"></div>
     <div class="field"><label>学年（表示用）</label><input id="editMGrade_${m.id}" value="${escapeHtml(m.grade||'')}"></div>
     <div class="field"><label>学年数値</label><input id="editMGradeVal_${m.id}" type="number" value="${m.gradeValue}"></div>
-    <div class="field"><label>入連日（西暦年月）</label><input id="editMJoinDate_${m.id}" type="month" value="${m.joinDate||''}"></div>
-    <div class="field"><label>卒業生として扱う</label>
-      <button class="btn btn-sm ${m.isGraduate?'btn-primary':'btn-ghost'}" onclick="toggleGraduateFlag('${m.id}')">${m.isGraduate?'卒業生（タップで現役に戻す）':'現役（タップで卒業生にする）'}</button>
-    </div>
+    <div class="field"><label>入連日（年月）</label><input id="editMJoinDate_${m.id}" type="month" value="${m.joinDate||''}"></div>
     <button class="btn btn-primary btn-block" onclick="saveMemberEdit('${m.id}')">保存する</button>
   </div>`;
-}
-window.toggleGraduateFlag = function(id){
-  const m = members.find(x=>x.id===id);
-  m.isGraduate = !m.isGraduate;
-  if(m.isGraduate && (!m.grade || m.grade==='')) m.grade = '小天狗卒業生';
-  renderAdmin();
 }
 window.toggleEditMember = function(id){ uiState.adminEditingMember = (uiState.adminEditingMember===id)?null:id; renderAdmin(); }
 window.saveMemberEdit = async function(id){
@@ -871,7 +787,7 @@ function adminGuardiansHtml(){
       html += `<div class="list-item" onclick="toggleEditGuardian('${g.id}')" style="flex-direction:column;align-items:stretch;">
         <div style="display:flex;justify-content:space-between;align-items:center;">
           <div><b>${escapeHtml(withSan(g.name))}</b><br><span class="muted">${escapeHtml(guardianChildLabel(g))}</span></div>
-          <button onclick="event.stopPropagation();confirmAndDelete('保護者『${escapeHtml(g.name)}』を削除しますか？', function(){ deleteGuardian('${g.id}'); })" style="color:var(--coral);background:none;border:none;cursor:pointer;font-size:16px;">✕</button>
+          <button onclick="event.stopPropagation();deleteGuardian('${g.id}')" style="color:var(--coral);background:none;border:none;cursor:pointer;font-size:16px;">✕</button>
         </div>
         ${isEditing ? renderGuardianEditPanel(g) : ''}
       </div>`;
@@ -918,7 +834,7 @@ function adminDutyBadgesHtml(){
     dutyBadges.forEach(b=>{
       html += `<div class="list-item" style="cursor:default;">
         <div><span class="badge-tag">${escapeHtml(b.code)}</span> ${escapeHtml(b.label)}</div>
-        <button onclick="confirmAndDelete('バッジ『${escapeHtml(b.code)}』を削除しますか？', function(){ deleteDutyBadge('${b.code}'); })" style="color:var(--coral);background:none;border:none;cursor:pointer;font-size:16px;">✕</button>
+        <button onclick="deleteDutyBadge('${b.code}')" style="color:var(--coral);background:none;border:none;cursor:pointer;font-size:16px;">✕</button>
       </div>`;
     });
     html += `</div>`;
@@ -945,7 +861,7 @@ window.deleteDutyBadge = async function(code){
 function adminLocationsHtml(){
   let html = `<div class="section-title">場所リスト管理（あらかじめ登録しておくとプルダウンで選べます）</div>
     <div class="card">
-      <div class="field"><label>場所を追加</label><input id="newLocationName" placeholder="例：座・高円寺　阿波踊りホール"></div>
+      <div class="field"><label>場所を追加</label><input id="newLocationName" placeholder="例：座・高円寺 阿波踊りホール"></div>
       <button class="btn btn-primary btn-block" onclick="addLocation()">＋ 場所を追加</button>
     </div>`;
   if(locations.length){
@@ -953,7 +869,7 @@ function adminLocationsHtml(){
     locations.forEach(l=>{
       html += `<div class="list-item" style="cursor:default;">
         <div>📍 ${escapeHtml(l.name)}</div>
-        <button onclick="confirmAndDelete('場所『${escapeHtml(l.name)}』を削除しますか？', function(){ deleteLocation('${l.id}'); })" style="color:var(--coral);background:none;border:none;cursor:pointer;font-size:16px;">✕</button>
+        <button onclick="deleteLocation('${l.id}')" style="color:var(--coral);background:none;border:none;cursor:pointer;font-size:16px;">✕</button>
       </div>`;
     });
     html += `</div>`;
@@ -976,18 +892,16 @@ window.deleteLocation = async function(id){
   showToast('削除しました');
 }
 function adminEventsHtml(){
-  let html = adminLocationsHtml();
-  html += adminDutyBadgesHtml();
-  html += `<div class="section-title">イベント作成（お当番の担当決定は「出欠募集中」ページで行います）</div>
+  let html = `<div class="section-title">イベント作成（お当番の担当決定は「出欠募集中」ページで行います）</div>
     <div class="card">
-      <div class="field"><label>種別</label><select id="eType" onchange="setNewEventType(this.value)">
-        <option value="練習" ${newEventDraft.type!=='本番'?'selected':''}>練習</option>
-        <option value="本番" ${newEventDraft.type==='本番'?'selected':''}>本番</option>
-      </select></div>
       <div class="field"><label>日付・開始時間</label><input id="eDate" type="datetime-local"></div>
       <div class="field"><label>終了時間</label><input id="eEndTime" type="time"></div>
       <div class="field"><label>タイトル</label><input id="eTitle" placeholder="例：全体練習"></div>
       <div class="field"><label>場所</label>${locationFieldHtml('new','')}</div>
+      <div class="field"><label>種別</label><select id="eType" onchange="setNewEventType(this.value)">
+        <option value="練習" ${newEventDraft.type!=='本番'?'selected':''}>練習</option>
+        <option value="本番" ${newEventDraft.type==='本番'?'selected':''}>本番</option>
+      </select></div>
       <div class="field"><label>${dutyLabel(newEventDraft.type)}の必要人数</label>
         <div class="counter-row">
           <button class="counter-btn" onclick="changeNewDutyTarget(-1)">－</button>
@@ -1014,7 +928,7 @@ function adminEventsHtml(){
       html += `<div class="list-item" onclick="toggleEditEvent('${ev.id}')" style="flex-direction:column;align-items:stretch;${past?'opacity:.55;':''}">
         <div style="display:flex;justify-content:space-between;align-items:center;">
           <div><span class="event-date">${fmtEventWhen(ev)}</span><span class="event-type ${ev.type}">${ev.type}</span><span class="status-tag ${ev.status}">${ev.status}</span><br><b>${escapeHtml(ev.title)}</b><br><span class="muted">📍${escapeHtml(ev.location||'未設定')} ／ ${dutyLabel(ev.type)} ${assigned.length}/${ev.dutyTarget||0}人${past?'（表示期間終了）':''}</span></div>
-          <button onclick="event.stopPropagation();confirmAndDelete('イベント『${escapeHtml(ev.title)}』を削除しますか？出欠データも削除されます。', function(){ deleteEvent('${ev.id}'); })" style="color:var(--coral);background:none;border:none;cursor:pointer;font-size:16px;">✕</button>
+          <button onclick="event.stopPropagation();deleteEvent('${ev.id}')" style="color:var(--coral);background:none;border:none;cursor:pointer;font-size:16px;">✕</button>
         </div>
         ${isEditing ? renderEventEditPanel(ev) : ''}
       </div>`;
@@ -1069,7 +983,6 @@ window.saveEventEdit = async function(eventId){
 window.changeNewDutyTarget = function(delta){ newEventDraft.dutyTarget = Math.max(0, newEventDraft.dutyTarget + delta); renderAdmin(); }
 window.setNewEventType = function(t){
   newEventDraft.type = t;
-  // 練習は通常1人、本番は複数人（10人以上）を想定した初期値。+/-で自由に調整可能。
   newEventDraft.dutyTarget = (t==='本番') ? 10 : 1;
   renderAdmin();
 }
@@ -1142,9 +1055,7 @@ window.changePasscode = async function(){
 }
 
 /* =========================================================
-   年度管理（アーカイブ／エクスポート／年度コピー）
-   過去年度・アーカイブ済み年度は isPastOrArchivedFY() で
-   イベント編集画面から自動的に閲覧専用になります。
+   年度管理
 ========================================================= */
 function adminFiscalYearHtml(){
   const years = [...new Set([...availableFiscalYears(), currentFiscalYear()])].sort((a,b)=>b-a);
@@ -1230,7 +1141,7 @@ window.copyFiscalYearForward = async function(fy){
 }
 
 /* =========================================================
-   当番集計（練習/本番で分けて、月別＋4月始まり年度計）
+   当番集計
 ========================================================= */
 function availableFiscalYears(){ const years = new Set(); events.forEach(ev=> years.add(fiscalYearOf(ev.date))); return [...years].sort((a,b)=>b-a); }
 function dutyDashboardHtml(){
