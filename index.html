@@ -976,9 +976,7 @@ window.deleteLocation = async function(id){
   showToast('削除しました');
 }
 function adminEventsHtml(){
-  let html = adminLocationsHtml();
-  html += adminDutyBadgesHtml();
-  html += `<div class="section-title">イベント作成（お当番の担当決定は「出欠募集中」ページで行います）</div>
+  let html = `<div class="section-title">イベント作成（お当番の担当決定は「出欠募集中」ページで行います）</div>
     <div class="card">
       <div class="field"><label>種別</label><select id="eType" onchange="setNewEventType(this.value)">
         <option value="練習" ${newEventDraft.type!=='本番'?'selected':''}>練習</option>
