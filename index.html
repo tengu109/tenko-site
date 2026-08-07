@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>TENKO！</title>
+
+<!-- PWA -->
+<link rel="manifest" href="./manifest.json">
+<meta name="theme-color" content="#66CCCC">
+<link rel="apple-touch-icon" href="./icons/icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="TENKO！">
+
+<!-- Excel(.xlsx)エクスポート用 -->
+<script src="https://cdn.jsdelivr.net/npm/[email protected]/dist/xlsx.full.min.js"></script>
+
+<link rel="stylesheet" href="./style.css">
+</head>
+
+<body>
+<div id="app">
+  <div class="topbar">
+    <div class="brand-row">
+      <div class="brand"><span class="dot"></span>TENKO！</div>
+      <div class="mode-pill user" id="modePill" onclick="onModePillClick()">使用者モード</div>
+    </div>
+    <div class="brand-sub">小天狗出欠調整サイト</div>
+  </div>
+  <div class="tabs">
+    <div class="tab active" data-tab="input"><span class="tab-icon">🏠</span>出欠募集中</div>
+    <div class="tab" data-tab="overview"><span class="tab-icon">📊</span>今後の予定</div>
+    <div class="tab locked" data-tab="admin"><span class="tab-icon">🔑</span>管理者<span id="adminLock">🔒</span></div>
+  </div>
+  <div class="screen active" id="screen-input"></div>
+  <div class="screen" id="screen-overview"></div>
+  <div class="screen" id="screen-admin"></div>
+</div>
+<div class="toast" id="toast"></div>
+<div class="modal-overlay" id="pcModal">
+  <div class="modal-box">
+    <h3>管理者モードに切替</h3>
+    <p>管理者用パスコードを入力してください</p>
+    <input id="pcInput" type="password" inputmode="numeric" maxlength="8" placeholder="••••">
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closePcModal()">キャンセル</button>
+      <button class="btn btn-primary" onclick="submitPasscode()">確認</button>
+    </div>
+  </div>
+</div>
+<script type="module" src="./app.js"></script>
+</body>
+</html>
