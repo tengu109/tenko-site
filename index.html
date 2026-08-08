@@ -33,7 +33,7 @@ html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);font-family:'
 .brand-row{display:flex;align-items:center;justify-content:space-between;}
 .brand{font-family:'Verdana',sans-serif;font-size:23px;font-weight:700;letter-spacing:.02em;display:flex;align-items:center;gap:8px;}
 .brand .dot{width:10px;height:10px;border-radius:50%;background:var(--teal);display:inline-block;}
-.mode-pill{font-size:11px;font-weight:700;padding:5px 11px;border-radius:20px;font-family:'Roboto Mono',monospace;cursor:pointer;white-space:nowrap;}
+.mode-pill{font-size:8px;font-weight:700;padding:3px 7px;border-radius:14px;font-family:'Roboto Mono',monospace;cursor:pointer;white-space:nowrap;}
 .mode-pill.user{background:rgba(58,143,143,.14);color:var(--teal-deep);}
 .mode-pill.admin{background:var(--teal);color:#fff;}
 .brand-sub{font-size:10.5px;color:var(--teal-deep);opacity:.85;margin-top:2px;letter-spacing:.1em;font-family:'Roboto Mono',monospace;}
@@ -156,8 +156,8 @@ table.duty2 td.total-col{font-weight:700;background:var(--lemon-pale);}
     <div class="brand-sub">小天狗出欠調整サイト</div>
   </div>
   <div class="tabs">
-    <div class="tab active" data-tab="input"><span class="tab-icon">🏠</span>出欠募集中</div>
-    <div class="tab" data-tab="overview"><span class="tab-icon">📊</span>今後の予定</div>
+    <div class="tab active" data-tab="input"><span class="tab-icon">📋</span>出欠募集中</div>
+    <div class="tab" data-tab="overview"><span class="tab-icon">🗓️</span>今後の予定</div>
     <div class="tab locked" data-tab="admin"><span class="tab-icon">🔑</span>管理者<span id="adminLock">🔒</span></div>
   </div>
   <div class="screen active" id="screen-input"><div class="empty"><div class="big">⏳</div>読み込み中…</div></div>
@@ -198,17 +198,19 @@ let locations = [];      // {id,name} predefined location list managed by admin
 let attendance = {};
 let dutyAttendance = {}; // open duty-availability poll, ALL guardians can answer
 let dutyBadges = [];     // {code,label} extensible badge master list (未/兼 etc.)
+let surveyAnswers = {};  // { [eventId]: { [questionId]: { [memberId]: {status, note} } } } — free-form ◯✕△ polls (e.g. 現地集合/解散, 移動手段)
 let archivedFiscalYears = []; // [2024, 2025, ...] years locked to read-only
 let adminPasscode = '0000';
 let isAdmin = false;
 let pendingTab = null;
 
 let uiState = {
-  inputType: '練習', inputSelectedEvent: null, inputExpandedMember: null, inputExpandedGuardian: null,
+  inputType: '練習', inputSelectedEvent: null, inputExpandedMember: null, inputExpandedGuardian: null, inputExpandedSurvey: null,
   overviewType: '練習', overviewSelectedEvent: null, overviewExpandedMember: null,
   dutyType: '練習', dutyFY: null,
   adminSubTab: 'events', adminEditingEvent: null, adminEditingMember: null, adminEditingGuardian: null,
   fyManageYear: null,
+  pastEventsType: '練習',
 };
 let newEventDraft = { dutyTarget: 1, type: '練習' };
 
@@ -289,7 +291,7 @@ async function loadAll(){
     ].map(name=>({ id: uid('loc'), name }));
     await saveLocations();
   }
-  events.forEach(ev=>{ if(!ev.status) ev.status='募集中'; if(!ev.dutyGuardianIds) ev.dutyGuardianIds=[]; if(!ev.dutyBadges) ev.dutyBadges={}; if(!ev.excludedMemberIds) ev.excludedMemberIds=[]; });
+  events.forEach(ev=>{ if(!ev.status) ev.status='募集中'; if(!ev.dutyGuardianIds) ev.dutyGuardianIds=[]; if(!ev.dutyBadges) ev.dutyBadges={}; if(!ev.excludedMemberIds) ev.excludedMemberIds=[]; if(!ev.surveyQuestions) ev.surveyQuestions=[]; });
   attendance = await DataStore.get('attendance', {});
   dutyAttendance = await DataStore.get('duty_attendance', {});
   adminPasscode = await DataStore.get('admin_passcode', '0000');
@@ -303,6 +305,7 @@ async function loadAll(){
     await saveDutyBadges();
   }
   archivedFiscalYears = await DataStore.get('archived_fiscal_years', []);
+  surveyAnswers = await DataStore.get('survey_answers', {});
   await maybeAdvanceGrades();
   renderAll();
 }
@@ -350,6 +353,7 @@ async function saveDutyAttendance(){ await DataStore.set('duty_attendance', duty
 async function savePasscode(){ await DataStore.set('admin_passcode', adminPasscode); }
 async function saveDutyBadges(){ await DataStore.set('duty_badges', dutyBadges); }
 async function saveArchivedFiscalYears(){ await DataStore.set('archived_fiscal_years', archivedFiscalYears); }
+async function saveSurveyAnswers(){ await DataStore.set('survey_answers', surveyAnswers); }
 function showToast(msg){ const t=document.getElementById('toast'); t.textContent=msg; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),1600); }
 
 /* =========================================================
@@ -366,7 +370,7 @@ function fmtDateShort(dt){
 function fmtTime(dt){ const d = new Date(dt); if(isNaN(d)) return ''; return `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`; }
 function fmtEventWhen(ev){ return `${fmtDateShort(ev.date)} ${fmtTime(ev.date)}${ev.endTime?('〜'+ev.endTime):''}`; }
 function sortedMembers(){
-  return [...members].filter(m=>!m.isGraduate).sort((a,b)=>{
+  return [...members].filter(m=>!m.isGraduate && !m.isOnLeave && !m.isRetired).sort((a,b)=>{
     if((b.gradeValue||0) !== (a.gradeValue||0)) return (b.gradeValue||0)-(a.gradeValue||0);
     const da = a.joinDate ? new Date(a.joinDate+'-01') : new Date(0);
     const db = b.joinDate ? new Date(b.joinDate+'-01') : new Date(0);
@@ -375,6 +379,15 @@ function sortedMembers(){
 }
 function sortedGraduates(){
   return members.filter(m=>m.isGraduate).sort((a,b)=> (a.name||'').localeCompare(b.name||'', 'ja'));
+}
+function sortedInactiveMembers(){
+  return members.filter(m=>!m.isGraduate && (m.isOnLeave || m.isRetired)).sort((a,b)=> (a.name||'').localeCompare(b.name||'', 'ja'));
+}
+function memberStatusLabel(m){
+  if(m.isGraduate) return '小天狗卒業生';
+  if(m.isRetired) return '引退';
+  if(m.isOnLeave) return '休連';
+  return '';
 }
 function activeMembersFor(ev){
   const excluded = (ev && ev.excludedMemberIds) || [];
@@ -502,6 +515,12 @@ function renderAll(){ renderInput(); renderOverview(); renderAdmin(); }
 /* =========================================================
    予定 (募集中の練習・本番)
 ========================================================= */
+function fmtDeadline(dl){
+  if(!dl) return '';
+  const d = new Date(dl+'T00:00:00'); if(isNaN(d)) return dl;
+  const wd = ['日','月','火','水','木','金','土'][d.getDay()];
+  return `${d.getMonth()+1}/${d.getDate()}(${wd})`;
+}
 function renderInput(){
   const el = document.getElementById('screen-input');
   let html = `<div class="segment">
@@ -521,6 +540,7 @@ function renderInput(){
         <span class="event-date">${fmtEventWhen(ev)}</span><span class="event-type ${ev.type}">${ev.type}</span><span class="status-tag ${ev.status}">${ev.status}</span>
         <h3>${escapeHtml(ev.title)}</h3>
         <div class="muted">📍 ${escapeHtml(ev.location||'未設定')}</div>
+        ${ev.deadline?`<div class="muted" style="color:var(--coral);font-weight:700;">⏰ 回答期限：${fmtDeadline(ev.deadline)}まで</div>`:''}
         <div class="muted">回答済み ${respondedCount} / ${activeMembersFor(ev).length}人</div>
       </div>`;
     });
@@ -534,6 +554,7 @@ function renderInput(){
       <span class="event-date">${fmtEventWhen(ev)}</span><span class="event-type ${ev.type}">${ev.type}</span><span class="status-tag ${ev.status}">${ev.status}</span>
       <h3>${escapeHtml(ev.title)}</h3>
       <div class="muted">📍 ${escapeHtml(ev.location||'未設定')}</div>
+      ${ev.deadline?`<div class="muted" style="color:var(--coral);font-weight:700;">⏰ 回答期限：${fmtDeadline(ev.deadline)}まで（期限後も変更は可能です）</div>`:''}
       <div class="muted">🎽 ${dutyLabel(ev.type)}：${decidedGuardians.length ? decidedGuardians.map(g=>guardianNameWithBadgesHtml(ev,g)).join('、') : '未定'}（${decidedGuardians.length}/${ev.dutyTarget||0}人決定）</div>
     </div>
     <div class="section-title">名前を選んで出欠を入力</div>`;
@@ -550,6 +571,25 @@ function renderInput(){
       </div>
       ${expanded ? renderStatusButtons(ev, mem.id, st) : ''}
     </div>`;
+  });
+
+  (ev.surveyQuestions||[]).forEach(q=>{
+    html += `<div class="section-title">📋 ${escapeHtml(q.text)}</div>`;
+    activeMembersFor(ev).forEach(mem=>{
+      const ans = (surveyAnswers[ev.id] && surveyAnswers[ev.id][q.id]) ? surveyAnswers[ev.id][q.id][mem.id] : null;
+      const pillClass = ans ? 'pill-'+ans.status : 'pill-未';
+      const pillText = ans ? ans.status : '未回答';
+      const key = q.id+'::'+mem.id;
+      const expanded = uiState.inputExpandedSurvey===key;
+      html += `
+      <div class="roster-row">
+        <div class="roster-top" onclick="toggleSurveyExpand('${key}')">
+          <div><span class="member-name">${displayName(mem)}</span></div>
+          <div class="status-pill ${pillClass}">${pillText}</div>
+        </div>
+        ${expanded ? renderSurveyAnswerButtons(ev.id, q.id, mem.id, ans) : ''}
+      </div>`;
+    });
   });
 
   const allGuardians = sortedGuardians();
@@ -619,6 +659,31 @@ function renderDutyStatusButtons(eventId, guardianId, dst){
     <div class="note-label">メモ（連絡事項など）</div>
     <input class="note-input" placeholder="例：18時から遅れて合流します" value="${escapeHtml(note)}" onclick="event.stopPropagation()" oninput="setDutyNote('${eventId}','${guardianId}',this.value)">`;
 }
+function renderSurveyAnswerButtons(eventId, questionId, memberId, ans){
+  const cur = ans ? ans.status : null;
+  const note = ans ? (ans.note||'') : '';
+  const symbols = ['◯','✕','△'];
+  let btns = symbols.map(s=>`<button class="status-btn ${cur===s?'sel-'+s:''}" onclick="event.stopPropagation();setSurveyAnswer('${eventId}','${questionId}','${memberId}','${s}')">${s}</button>`).join('');
+  return `<div class="status-buttons">${btns}</div>
+    <div class="note-label">メモ（連絡事項など）</div>
+    <input class="note-input" placeholder="例：自転車で来ます" value="${escapeHtml(note)}" onclick="event.stopPropagation()" oninput="setSurveyNote('${eventId}','${questionId}','${memberId}',this.value)">`;
+}
+window.toggleSurveyExpand = function(key){ uiState.inputExpandedSurvey = (uiState.inputExpandedSurvey===key)?null:key; renderInput(); }
+window.setSurveyAnswer = async function(eventId, questionId, memberId, status){
+  if(!surveyAnswers[eventId]) surveyAnswers[eventId] = {};
+  if(!surveyAnswers[eventId][questionId]) surveyAnswers[eventId][questionId] = {};
+  const prev = surveyAnswers[eventId][questionId][memberId] || {};
+  surveyAnswers[eventId][questionId][memberId] = { status, note: prev.note||'' };
+  await saveSurveyAnswers(); renderInput();
+  showToast('回答を更新しました');
+}
+window.setSurveyNote = async function(eventId, questionId, memberId, note){
+  if(!surveyAnswers[eventId]) surveyAnswers[eventId] = {};
+  if(!surveyAnswers[eventId][questionId]) surveyAnswers[eventId][questionId] = {};
+  if(!surveyAnswers[eventId][questionId][memberId]) surveyAnswers[eventId][questionId][memberId] = {status:null, note:''};
+  surveyAnswers[eventId][questionId][memberId].note = note;
+  await saveSurveyAnswers();
+}
 window.selectInputEvent = function(id){ uiState.inputSelectedEvent = id; uiState.inputExpandedMember=null; uiState.inputExpandedGuardian=null; renderInput(); }
 window.backToEventList = function(){ uiState.inputSelectedEvent = null; renderInput(); }
 window.toggleMemberExpand = function(memberId){ uiState.inputExpandedMember = (uiState.inputExpandedMember===memberId)?null:memberId; uiState.inputExpandedGuardian=null; renderInput(); }
@@ -655,12 +720,15 @@ window.setDutyNote = async function(eventId, guardianId, note){
   dutyAttendance[eventId][guardianId].note = note;
   await saveDutyAttendance();
 }
+function renderCurrentDutyScreen(){
+  if(document.querySelector('.tab.active[data-tab="overview"]')) renderOverview(); else renderInput();
+}
 window.toggleFinalDuty = async function(eventId, guardianId){
   const ev = events.find(e=>e.id===eventId);
   if(!ev.dutyGuardianIds) ev.dutyGuardianIds = [];
   const idx = ev.dutyGuardianIds.indexOf(guardianId);
   if(idx>=0) ev.dutyGuardianIds.splice(idx,1); else ev.dutyGuardianIds.push(guardianId);
-  await saveEvents(); renderInput();
+  await saveEvents(); renderCurrentDutyScreen();
   showToast('お当番の担当を更新しました');
 }
 window.toggleDutyBadge = async function(eventId, guardianId, code){
@@ -669,8 +737,9 @@ window.toggleDutyBadge = async function(eventId, guardianId, code){
   if(!ev.dutyBadges[guardianId]) ev.dutyBadges[guardianId] = [];
   const idx = ev.dutyBadges[guardianId].indexOf(code);
   if(idx>=0) ev.dutyBadges[guardianId].splice(idx,1); else ev.dutyBadges[guardianId].push(code);
-  await saveEvents(); renderInput();
+  await saveEvents(); renderCurrentDutyScreen();
 }
+window.toggleDutyBadgeOverview = window.toggleDutyBadge;
 
 /* =========================================================
    出欠調整 (決定した予定の結果を閲覧／お当番出欠依頼欄は自動で非表示)
@@ -740,6 +809,32 @@ function renderOverview(){
   html += `<div class="group-title">未回答者（${noResponse.length}名）</div>`;
   html += noResponse.length ? noResponse.map(m=>overviewRow(m)).join('') : `<div class="namelist warn muted">全員回答済みです</div>`;
   html += `<div class="muted" style="margin-top:10px;">※名前をタップすると出欠・メモを修正できます</div>`;
+
+  if(isAdmin){
+    const allGuardians = sortedGuardians();
+    if(allGuardians.length){
+      html += `<div class="admin-only-block">
+        <div class="section-title" style="margin-top:0;">🔑 ${dutyLabel(ev.type)}の確認・変更（管理者のみ）</div>
+        <div class="muted" style="margin-bottom:8px;">決定後でもここから担当の追加・変更ができます（${decidedGuardians.length}/${ev.dutyTarget||0}人）</div>
+        <div class="chip-list">
+          ${allGuardians.map(g=>{
+            const dst = dutyStatusOf(ev.id, g.id);
+            const sel = (ev.dutyGuardianIds||[]).includes(g.id);
+            const mark = dst ? dst.status : '未';
+            return `<div class="chip ${sel?'sel':''}" onclick="toggleFinalDuty('${ev.id}','${g.id}')">${escapeHtml(withSan(g.name))}（${mark}）</div>`;
+          }).join('')}
+        </div>
+        ${decidedGuardians.length ? `
+        <div class="section-title" style="margin-top:14px;">🏷️ バッジを設定する（担当が決まった方のみ）</div>
+        ${decidedGuardians.map(g=>{
+          const codes = guardianBadgesFor(ev, g.id);
+          return `<div style="margin-bottom:6px;"><span class="member-name">${escapeHtml(withSan(g.name))}</span><br>
+            ${dutyBadges.map(b=>`<span class="badge-toggle ${codes.includes(b.code)?'on':''}" onclick="toggleDutyBadgeOverview('${ev.id}','${g.id}','${b.code}')">${escapeHtml(b.code)} ${escapeHtml(b.label)}</span>`).join('')}
+          </div>`;
+        }).join('')}` : ''}
+      </div>`;
+    }
+  }
   el.innerHTML = html;
 }
 window.setOverviewType = function(t){ uiState.overviewType=t; uiState.overviewSelectedEvent=null; renderOverview(); }
@@ -821,25 +916,47 @@ function adminMembersHtml(){
     });
     html += `</div>`;
   }
+  const inactives = sortedInactiveMembers();
+  if(inactives.length){
+    html += `<div class="section-title">休連・引退メンバー</div>`;
+    html += `<div class="card">`;
+    inactives.forEach(m=>{
+      const isEditing = uiState.adminEditingMember===m.id;
+      html += `<div class="list-item graduate-item" onclick="toggleEditMember('${m.id}')" style="flex-direction:column;align-items:stretch;">
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+          <div><span class="member-name graduate-name">${escapeHtml(m.name)}</span><br><span class="muted">${memberStatusLabel(m)}${m.joinDate?(' ・入連 '+fmtYearMonth(m.joinDate)):''}</span></div>
+          <button onclick="event.stopPropagation();confirmAndDelete('『${escapeHtml(m.name)}』を名簿から完全に削除しますか？この操作は取り消せません。', function(){ deleteMember('${m.id}'); })" style="color:var(--coral);background:none;border:none;cursor:pointer;font-size:16px;">✕</button>
+        </div>
+        ${isEditing ? renderMemberEditPanel(m) : ''}
+      </div>`;
+    });
+    html += `</div>`;
+  }
   return html;
 }
 function renderMemberEditPanel(m){
+  const cur = m.isGraduate?'graduate':(m.isRetired?'retired':(m.isOnLeave?'leave':'active'));
+  const statusBtn = (val,label)=>`<button class="btn btn-sm ${cur===val?'btn-primary':'btn-ghost'}" onclick="setMemberStatus('${m.id}','${val}')" style="margin:2px 4px 2px 0;">${label}</button>`;
   return `<div class="edit-panel" onclick="event.stopPropagation()">
     <div class="field"><label>名前</label><input id="editMName_${m.id}" value="${escapeHtml(m.name)}"></div>
     <div class="field"><label>ふりがな</label><input id="editMFuri_${m.id}" value="${escapeHtml(m.furigana||'')}"></div>
     <div class="field"><label>学年（表示用）</label><input id="editMGrade_${m.id}" value="${escapeHtml(m.grade||'')}"></div>
     <div class="field"><label>学年数値</label><input id="editMGradeVal_${m.id}" type="number" value="${m.gradeValue}"></div>
     <div class="field"><label>入連日（西暦年月）</label><input id="editMJoinDate_${m.id}" type="month" value="${m.joinDate||''}"></div>
-    <div class="field"><label>卒業生として扱う</label>
-      <button class="btn btn-sm ${m.isGraduate?'btn-primary':'btn-ghost'}" onclick="toggleGraduateFlag('${m.id}')">${m.isGraduate?'卒業生（タップで現役に戻す）':'現役（タップで卒業生にする）'}</button>
+    <div class="field"><label>在籍状況（休連・引退にすると出欠には出なくなります）</label>
+      ${statusBtn('active','現役')}${statusBtn('leave','休連')}${statusBtn('retired','引退')}${statusBtn('graduate','卒業生')}
     </div>
     <button class="btn btn-primary btn-block" onclick="saveMemberEdit('${m.id}')">保存する</button>
   </div>`;
 }
-window.toggleGraduateFlag = function(id){
+window.setMemberStatus = function(id, status){
   const m = members.find(x=>x.id===id);
-  m.isGraduate = !m.isGraduate;
-  if(m.isGraduate && (!m.grade || m.grade==='')) m.grade = '小天狗卒業生';
+  m.isGraduate = (status==='graduate');
+  m.isOnLeave = (status==='leave');
+  m.isRetired = (status==='retired');
+  if(status!=='active' && (!m.grade || m.grade==='小天狗卒業生'||m.grade==='')){
+    m.grade = status==='graduate' ? '小天狗卒業生' : (status==='retired' ? '引退' : '休連');
+  }
   renderAdmin();
 }
 window.toggleEditMember = function(id){ uiState.adminEditingMember = (uiState.adminEditingMember===id)?null:id; renderAdmin(); }
@@ -989,6 +1106,7 @@ function adminEventsHtml(){
       <div class="field"><label>終了時間</label><input id="eEndTime" type="time"></div>
       <div class="field"><label>タイトル</label><input id="eTitle" placeholder="例：全体練習"></div>
       <div class="field"><label>場所</label>${locationFieldHtml('new','')}</div>
+      <div class="field"><label>回答期限（この日までに出欠回答をお願いします）</label><input id="eDeadline" type="date"></div>
       <div class="field"><label>${dutyLabel(newEventDraft.type)}の必要人数</label>
         <div class="counter-row">
           <button class="counter-btn" onclick="changeNewDutyTarget(-1)">－</button>
@@ -1025,10 +1143,14 @@ function adminEventsHtml(){
   return html;
 }
 function pastEventsHtml(){
-  const pastEvents = [...events].filter(ev=>!isNotPast(ev.date)).sort((a,b)=> new Date(b.date)-new Date(a.date));
-  let html = `<div class="section-title">過去のイベント一覧（新しい順）</div>`;
+  let html = `<div class="segment">
+    <div class="seg-btn ${uiState.pastEventsType==='練習'?'active':''}" onclick="setPastEventsType('練習')">練習</div>
+    <div class="seg-btn ${uiState.pastEventsType==='本番'?'active':''}" onclick="setPastEventsType('本番')">本番</div>
+  </div>`;
+  const pastEvents = [...events].filter(ev=>!isNotPast(ev.date) && ev.type===uiState.pastEventsType).sort((a,b)=> new Date(b.date)-new Date(a.date));
+  html += `<div class="section-title">過去の${uiState.pastEventsType}一覧（新しい順）</div>`;
   if(pastEvents.length===0){
-    return html + `<div class="empty"><div class="big">📁</div>過去のイベントはまだありません。</div>`;
+    return html + `<div class="empty"><div class="big">📁</div>過去の${uiState.pastEventsType}はまだありません。</div>`;
   }
   html += `<div class="muted" style="margin-bottom:8px;">終了した予定はここにまとまります。「出欠募集中」「今後の予定」には表示されません。</div>`;
   html += `<div class="card">`;
@@ -1044,12 +1166,14 @@ function pastEventsHtml(){
   html += `</div>`;
   return html;
 }
+window.setPastEventsType = function(t){ uiState.pastEventsType=t; renderAdmin(); }
 function renderEventEditPanel(ev){
   return `<div class="edit-panel" onclick="event.stopPropagation()">
     <div class="field"><label>日付・開始時間</label><input id="editDate_${ev.id}" type="datetime-local" value="${ev.date}"></div>
     <div class="field"><label>終了時間</label><input id="editEndTime_${ev.id}" type="time" value="${ev.endTime||''}"></div>
     <div class="field"><label>タイトル</label><input id="editTitle_${ev.id}" value="${escapeHtml(ev.title)}" placeholder="例：全体練習"></div>
     <div class="field"><label>場所</label>${locationFieldHtml(ev.id, ev.location||'')}</div>
+    <div class="field"><label>回答期限（この日までに出欠回答をお願いします）</label><input id="editDeadline_${ev.id}" type="date" value="${ev.deadline||''}"></div>
     <div class="field"><label>状態</label>
       <button class="btn ${(ev._draftStatus||ev.status)==='募集中'?'btn-primary':'btn-ghost'} btn-sm" onclick="setEventStatus('${ev.id}','募集中')">募集中</button>
       <button class="btn ${(ev._draftStatus||ev.status)==='決定'?'btn-primary':'btn-ghost'} btn-sm" onclick="setEventStatus('${ev.id}','決定')">決定</button>
@@ -1066,6 +1190,13 @@ function renderEventEditPanel(ev){
       <div class="chip-list" id="editExcludeChips_${ev.id}">${sortedMembers().map(m=>`<div class="chip ${(ev.excludedMemberIds||[]).includes(m.id)?'sel':''}" data-id="${m.id}" onclick="toggleEditExcludeChip(this)">${plainDisplayName(m)}</div>`).join('')}</div>
     </div>
     <button class="btn btn-primary btn-block" onclick="saveEventEdit('${ev.id}')">保存する</button>
+    <div class="field" style="margin-top:16px;"><label>追加アンケート項目（◯×△で回答してもらう質問。例：現地集合か解散か／移動手段は？）</label>
+      <div class="chip-list" style="margin-bottom:6px;">
+        ${(ev.surveyQuestions||[]).map(q=>`<div class="chip sel">${escapeHtml(q.text)} <span onclick="event.stopPropagation();confirmAndDelete('質問『${escapeHtml(q.text)}』を削除しますか？回答も削除されます。', function(){ deleteSurveyQuestion('${ev.id}','${q.id}'); })" style="margin-left:4px;cursor:pointer;">✕</span></div>`).join('') || '<span class="muted">まだ質問はありません</span>'}
+      </div>
+      <input id="newSurveyQ_${ev.id}" class="note-input" placeholder="例：現地集合か解散か">
+      <button class="btn btn-ghost btn-sm btn-block" style="margin-top:6px;" onclick="addSurveyQuestion('${ev.id}')">＋ 質問を追加</button>
+    </div>
   </div>`;
 }
 window.setEventStatus = function(eventId, status){ const ev = events.find(e=>e.id===eventId); ev._draftStatus = status; renderAdmin(); }
@@ -1077,12 +1208,32 @@ window.changeEditDutyTarget = function(eventId, delta){
   document.getElementById('editDutyVal_'+eventId).textContent = ev._draftTarget;
 }
 window.toggleEditExcludeChip = function(chipEl){ chipEl.classList.toggle('sel'); }
+window.addSurveyQuestion = async function(eventId){
+  const input = document.getElementById('newSurveyQ_'+eventId);
+  const text = input.value.trim();
+  if(!text){ showToast('質問内容を入力してください'); return; }
+  const ev = events.find(e=>e.id===eventId);
+  if(!ev.surveyQuestions) ev.surveyQuestions = [];
+  ev.surveyQuestions.push({ id: uid('q'), text });
+  await saveEvents();
+  renderAdmin(); renderInput();
+  showToast('質問を追加しました');
+}
+window.deleteSurveyQuestion = async function(eventId, questionId){
+  const ev = events.find(e=>e.id===eventId);
+  ev.surveyQuestions = (ev.surveyQuestions||[]).filter(q=>q.id!==questionId);
+  if(surveyAnswers[eventId]) delete surveyAnswers[eventId][questionId];
+  await saveEvents(); await saveSurveyAnswers();
+  renderAdmin(); renderInput();
+  showToast('質問を削除しました');
+}
 window.saveEventEdit = async function(eventId){
   const ev = events.find(e=>e.id===eventId);
   ev.date = document.getElementById('editDate_'+eventId).value;
   ev.endTime = document.getElementById('editEndTime_'+eventId).value;
   ev.title = document.getElementById('editTitle_'+eventId).value.trim();
   ev.location = getLocationValue(eventId);
+  ev.deadline = document.getElementById('editDeadline_'+eventId).value;
   ev.dutyTarget = ev._draftTarget!==undefined ? ev._draftTarget : (ev.dutyTarget||0);
   ev.status = ev._draftStatus || ev.status || '募集中';
   ev.excludedMemberIds = Array.from(document.querySelectorAll(`#editExcludeChips_${eventId} .chip.sel`)).map(c=>c.dataset.id);
@@ -1144,9 +1295,10 @@ window.addEvent = async function(){
   const endTime = document.getElementById('eEndTime').value;
   const title = document.getElementById('eTitle').value.trim();
   const location = getLocationValue('new');
+  const deadline = document.getElementById('eDeadline').value;
   const type = document.getElementById('eType').value;
   if(!date || !title){ showToast('日時とタイトルを入力してください'); return; }
-  events.push({ id: uid('evt'), date, endTime, title, location, type, status:'募集中', dutyTarget: newEventDraft.dutyTarget, dutyGuardianIds: [], dutyBadges: {}, excludedMemberIds: [] });
+  events.push({ id: uid('evt'), date, endTime, title, location, deadline, type, status:'募集中', dutyTarget: newEventDraft.dutyTarget, dutyGuardianIds: [], dutyBadges: {}, excludedMemberIds: [], surveyQuestions: [] });
   await saveEvents();
   newEventDraft = { dutyTarget: 1, type: '練習' };
   renderAdmin(); renderInput(); renderOverview();
@@ -1275,7 +1427,7 @@ window.copyFiscalYearForward = async function(fy){
   const shifted = events.filter(ev=>fiscalYearOf(ev.date)===fy).map(ev=>({
     id: uid('evt'), date: shiftYearInDateTimeLocal(ev.date,1), endTime: ev.endTime,
     title: ev.title, location: ev.location, type: ev.type, status:'募集中',
-    dutyTarget: ev.dutyTarget, dutyGuardianIds: [], dutyBadges: {}, excludedMemberIds: []
+    dutyTarget: ev.dutyTarget, dutyGuardianIds: [], dutyBadges: {}, excludedMemberIds: [], surveyQuestions: []
   }));
   if(shifted.length===0){ showToast('コピー対象のイベントがありません'); return; }
   events = events.concat(shifted);
