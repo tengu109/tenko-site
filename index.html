@@ -28,7 +28,8 @@
 html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);font-family:'Verdana',sans-serif;-webkit-tap-highlight-color:transparent;}
 #app{max-width:520px;margin:0 auto;min-height:100vh;display:flex;flex-direction:column;background:var(--bg);}
 .topbar{background:var(--bg);color:var(--ink);padding:16px 18px 18px;position:relative;overflow:hidden;border-bottom:1px solid var(--line);}
-.topbar::after{content:"";position:absolute;right:-26px;top:-26px;width:100px;height:100px;border-radius:50%;background:var(--lemon);opacity:.35;}
+.topbar::after{content:"";position:absolute;right:-26px;top:-26px;width:100px;height:100px;border-radius:50%;background:var(--lemon);opacity:.35;z-index:0;}
+.brand-row{position:relative;z-index:1;}
 .brand-row{display:flex;align-items:center;justify-content:space-between;}
 .brand{font-family:'Verdana',sans-serif;font-size:23px;font-weight:700;letter-spacing:.02em;display:flex;align-items:center;gap:8px;}
 .brand .dot{width:10px;height:10px;border-radius:50%;background:var(--teal);display:inline-block;}
@@ -36,9 +37,9 @@ html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);font-family:'
 .mode-pill.user{background:rgba(58,143,143,.14);color:var(--teal-deep);}
 .mode-pill.admin{background:var(--teal);color:#fff;}
 .brand-sub{font-size:10.5px;color:var(--teal-deep);opacity:.85;margin-top:2px;letter-spacing:.1em;font-family:'Roboto Mono',monospace;}
-.tabs{display:flex;background:var(--teal-deep);position:sticky;top:0;z-index:10;}
-.tab{flex:1;text-align:center;padding:11px 4px;color:#DFF3F3;font-size:12px;font-weight:500;cursor:pointer;border-bottom:3px solid transparent;transition:.15s;}
-.tab.active{color:#fff;border-bottom-color:var(--lemon);background:rgba(255,255,255,.08);}
+.tabs{display:flex;background:var(--lemon);position:sticky;top:0;z-index:10;border-bottom:1px solid var(--lemon-deep);}
+.tab{flex:1;text-align:center;padding:11px 4px;color:#7A6E1E;font-size:12px;font-weight:600;cursor:pointer;border-bottom:3px solid transparent;transition:.15s;}
+.tab.active{color:var(--teal-deep);font-weight:800;border-bottom-color:var(--teal);background:rgba(255,255,255,.35);}
 .tab.locked{opacity:.55;}
 .tab-icon{font-size:16px;display:block;margin-bottom:2px;}
 .screen{display:none;padding:16px;padding-bottom:40px;flex:1;}
@@ -55,7 +56,7 @@ html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);font-family:'
 .event-type.練習{background:#E1F0E0;color:#2E6B3B;}
 .event-type.本番{background:#FBE4DE;color:var(--coral);}
 .status-tag{font-size:11px;font-weight:700;padding:2px 8px;border-radius:6px;margin-left:6px;}
-.status-tag.募集中{background:#DEEBF3;color:var(--sky);}
+.status-tag.募集中{background:var(--lemon);color:#7A6E1E;}
 .status-tag.決定{background:#E1F0E0;color:#2E6B3B;}
 .muted{color:#7C8570;font-size:12px;}
 .empty{text-align:center;padding:40px 20px;color:#8A9384;}
@@ -288,7 +289,7 @@ async function loadAll(){
     ].map(name=>({ id: uid('loc'), name }));
     await saveLocations();
   }
-  events.forEach(ev=>{ if(!ev.status) ev.status='募集中'; if(!ev.dutyGuardianIds) ev.dutyGuardianIds=[]; if(!ev.dutyBadges) ev.dutyBadges={}; });
+  events.forEach(ev=>{ if(!ev.status) ev.status='募集中'; if(!ev.dutyGuardianIds) ev.dutyGuardianIds=[]; if(!ev.dutyBadges) ev.dutyBadges={}; if(!ev.excludedMemberIds) ev.excludedMemberIds=[]; });
   attendance = await DataStore.get('attendance', {});
   dutyAttendance = await DataStore.get('duty_attendance', {});
   adminPasscode = await DataStore.get('admin_passcode', '0000');
@@ -374,6 +375,10 @@ function sortedMembers(){
 }
 function sortedGraduates(){
   return members.filter(m=>m.isGraduate).sort((a,b)=> (a.name||'').localeCompare(b.name||'', 'ja'));
+}
+function activeMembersFor(ev){
+  const excluded = (ev && ev.excludedMemberIds) || [];
+  return sortedMembers().filter(m=>!excluded.includes(m.id));
 }
 function fmtYearMonth(ym){
   if(!ym) return '';
@@ -516,7 +521,7 @@ function renderInput(){
         <span class="event-date">${fmtEventWhen(ev)}</span><span class="event-type ${ev.type}">${ev.type}</span><span class="status-tag ${ev.status}">${ev.status}</span>
         <h3>${escapeHtml(ev.title)}</h3>
         <div class="muted">📍 ${escapeHtml(ev.location||'未設定')}</div>
-        <div class="muted">回答済み ${respondedCount} / ${members.length}人</div>
+        <div class="muted">回答済み ${respondedCount} / ${activeMembersFor(ev).length}人</div>
       </div>`;
     });
     el.innerHTML = html; return;
@@ -532,7 +537,7 @@ function renderInput(){
       <div class="muted">🎽 ${dutyLabel(ev.type)}：${decidedGuardians.length ? decidedGuardians.map(g=>guardianNameWithBadgesHtml(ev,g)).join('、') : '未定'}（${decidedGuardians.length}/${ev.dutyTarget||0}人決定）</div>
     </div>
     <div class="section-title">名前を選んで出欠を入力</div>`;
-  sortedMembers().forEach(mem=>{
+  activeMembersFor(ev).forEach(mem=>{
     const st = statusOf(ev.id, mem.id);
     const pillClass = st ? 'pill-'+st.status : 'pill-未';
     const pillText = st ? st.status : '未回答';
@@ -597,16 +602,12 @@ function renderStatusButtons(ev, memberId, st, source){
   source = source || 'input';
   const cur = st ? st.status : null;
   const note = st ? (st.note||'') : '';
-  const gnote = st ? (st.guardianNote||'') : '';
   const symbols = ['◯','✕','遅','早','△'];
   let btns = symbols.map(s=>`<button class="status-btn ${cur===s?'sel-'+s:''}" onclick="event.stopPropagation();setStatus('${ev.id}','${memberId}','${s}','${source}')">${s}</button>`).join('');
+  const notePlaceholder = ev.type==='本番' ? '例：出演と兼任／未就学児の付き添いあり' : '例：18:30到着予定';
   let out = `<div class="status-buttons">${btns}</div>
     <div class="note-label">メモ（連絡事項など）</div>
-    <input class="note-input" placeholder="例：18:30到着予定" value="${escapeHtml(note)}" onclick="event.stopPropagation()" oninput="setNote('${ev.id}','${memberId}',this.value)">`;
-  if(ev.type==='本番'){
-    out += `<div class="note-label">保護者欄（兼任・未就学児の付き添いなど）</div>
-    <input class="note-input" placeholder="例：出演と兼任／未就学児の付き添いあり" value="${escapeHtml(gnote)}" onclick="event.stopPropagation()" oninput="setGuardianNote('${ev.id}','${memberId}',this.value)">`;
-  }
+    <input class="note-input" placeholder="${notePlaceholder}" value="${escapeHtml(note)}" onclick="event.stopPropagation()" oninput="setNote('${ev.id}','${memberId}',this.value)">`;
   return out;
 }
 function renderDutyStatusButtons(eventId, guardianId, dst){
@@ -693,7 +694,7 @@ function renderOverview(){
   const decidedGuardians = (ev.dutyGuardianIds||[]).map(id=>guardians.find(g=>g.id===id)).filter(Boolean);
 
   const attending = [], absent = [], hold = [], noResponse = [];
-  sortedMembers().forEach(mem=>{
+  activeMembersFor(ev).forEach(mem=>{
     const st = statusOf(ev.id, mem.id);
     if(!st || !st.status){ noResponse.push(mem); return; }
     if(st.status==='◯' || st.status==='遅' || st.status==='早'){ attending.push(mem); }
@@ -712,7 +713,7 @@ function renderOverview(){
   html += `
     <div class="scoreboard">
       <div class="score-label">出席予定 / 全体</div>
-      <div class="score-num">${attending.length}<span> / ${members.length}</span></div>
+      <div class="score-num">${attending.length}<span> / ${activeMembersFor(ev).length}</span></div>
     </div>`;
   const overviewRow = (mem, numberPrefix)=>{
     const st = statusOf(ev.id, mem.id);
@@ -754,12 +755,14 @@ function renderAdmin(){
     </div>
     <div class="segment sub">
       <div class="seg-btn ${uiState.adminSubTab==='events'?'active':''}" onclick="setAdminSubTab('events')">イベント</div>
+      <div class="seg-btn ${uiState.adminSubTab==='past'?'active':''}" onclick="setAdminSubTab('past')">過去イベント</div>
       <div class="seg-btn ${uiState.adminSubTab==='duty'?'active':''}" onclick="setAdminSubTab('duty')">当番集計</div>
       <div class="seg-btn ${uiState.adminSubTab==='fy'?'active':''}" onclick="setAdminSubTab('fy')">年度管理</div>
       <div class="seg-btn ${uiState.adminSubTab==='members'?'active':''}" onclick="setAdminSubTab('members')">名簿</div>
       <div class="seg-btn ${uiState.adminSubTab==='settings'?'active':''}" onclick="setAdminSubTab('settings')">設定</div>
     </div>`;
   if(uiState.adminSubTab==='events') html += adminEventsHtml();
+  if(uiState.adminSubTab==='past') html += pastEventsHtml();
   if(uiState.adminSubTab==='duty') html += dutyDashboardHtml();
   if(uiState.adminSubTab==='fy') html += adminFiscalYearHtml();
   if(uiState.adminSubTab==='members') html += adminMembersHtml() + adminGuardiansHtml();
@@ -858,7 +861,7 @@ let newGuardianDraft = { memberIds: [] };
 function adminGuardiansHtml(){
   let html = `<div class="section-title">保護者名簿管理（表示名の末尾に自動で「さん」がつきます）</div>
     <div class="card">
-      <div class="field"><label>保護者名</label><input id="gName" placeholder="例：竹本花"></div>
+      <div class="field"><label>保護者名</label><input id="gName" placeholder="例：天狗太郎"></div>
       <div class="field"><label>お子さん（兄弟姉妹がいる場合は複数選択できます）</label>
         <div class="chip-list" id="newGuardianChips">${sortedMembers().map(m=>`<div class="chip ${newGuardianDraft.memberIds.includes(m.id)?'sel':''}" onclick="toggleNewGuardianChip('${m.id}', this)">${plainDisplayName(m)}</div>`).join('') || '<span class="muted">先にメンバーを登録してください</span>'}</div>
       </div>
@@ -995,13 +998,13 @@ function adminEventsHtml(){
       </div>
       <button class="btn btn-primary btn-block" onclick="addEvent()">＋ イベントを追加（募集中で作成）</button>
     </div>`;
-  html += `<div class="section-title">イベント一覧（日付が近い順）</div>`;
-  if(events.length){
+  html += `<div class="section-title">イベント一覧（今後の予定・日付が近い順）</div>`;
+  const upcomingEvents = events.filter(ev=>isNotPast(ev.date));
+  if(upcomingEvents.length){
     html += `<div class="card">`;
-    [...events].sort((a,b)=> new Date(a.date)-new Date(b.date)).forEach(ev=>{
+    [...upcomingEvents].sort((a,b)=> new Date(a.date)-new Date(b.date)).forEach(ev=>{
       const isEditing = uiState.adminEditingEvent===ev.id;
       const assigned = (ev.dutyGuardianIds||[]).map(id=>guardians.find(g=>g.id===id)).filter(Boolean);
-      const past = !isNotPast(ev.date);
       const fyLocked = isPastOrArchivedFY(fiscalYearOf(ev.date));
       if(fyLocked){
         html += `<div class="list-item" style="flex-direction:column;align-items:stretch;opacity:.55;cursor:default;">
@@ -1009,9 +1012,9 @@ function adminEventsHtml(){
         </div>`;
         return;
       }
-      html += `<div class="list-item" onclick="toggleEditEvent('${ev.id}')" style="flex-direction:column;align-items:stretch;${past?'opacity:.55;':''}">
+      html += `<div class="list-item" onclick="toggleEditEvent('${ev.id}')" style="flex-direction:column;align-items:stretch;">
         <div style="display:flex;justify-content:space-between;align-items:center;">
-          <div><span class="event-date">${fmtEventWhen(ev)}</span><span class="event-type ${ev.type}">${ev.type}</span><span class="status-tag ${ev.status}">${ev.status}</span><br><b>${escapeHtml(ev.title)}</b><br><span class="muted">📍${escapeHtml(ev.location||'未設定')} ／ ${dutyLabel(ev.type)} ${assigned.length}/${ev.dutyTarget||0}人${past?'（表示期間終了）':''}</span></div>
+          <div><span class="event-date">${fmtEventWhen(ev)}</span><span class="event-type ${ev.type}">${ev.type}</span><span class="status-tag ${ev.status}">${ev.status}</span><br><b>${escapeHtml(ev.title)}</b><br><span class="muted">📍${escapeHtml(ev.location||'未設定')} ／ ${dutyLabel(ev.type)} ${assigned.length}/${ev.dutyTarget||0}人</span></div>
           <button onclick="event.stopPropagation();confirmAndDelete('イベント『${escapeHtml(ev.title)}』を削除しますか？出欠データも削除されます。', function(){ deleteEvent('${ev.id}'); })" style="color:var(--coral);background:none;border:none;cursor:pointer;font-size:16px;">✕</button>
         </div>
         ${isEditing ? renderEventEditPanel(ev) : ''}
@@ -1021,6 +1024,26 @@ function adminEventsHtml(){
   }
   return html;
 }
+function pastEventsHtml(){
+  const pastEvents = [...events].filter(ev=>!isNotPast(ev.date)).sort((a,b)=> new Date(b.date)-new Date(a.date));
+  let html = `<div class="section-title">過去のイベント一覧（新しい順）</div>`;
+  if(pastEvents.length===0){
+    return html + `<div class="empty"><div class="big">📁</div>過去のイベントはまだありません。</div>`;
+  }
+  html += `<div class="muted" style="margin-bottom:8px;">終了した予定はここにまとまります。「出欠募集中」「今後の予定」には表示されません。</div>`;
+  html += `<div class="card">`;
+  pastEvents.forEach(ev=>{
+    const fyLocked = isPastOrArchivedFY(fiscalYearOf(ev.date));
+    html += `<div class="list-item" style="flex-direction:column;align-items:stretch;cursor:default;">
+      <div style="display:flex;justify-content:space-between;align-items:center;">
+        <div><span class="event-date">${fmtEventWhen(ev)}</span><span class="event-type ${ev.type}">${ev.type}</span><span class="status-tag ${ev.status}">${ev.status}</span>${fyLocked?' <span class="muted">🔒年度確定済み</span>':''}<br><b>${escapeHtml(ev.title)}</b><br><span class="muted">📍${escapeHtml(ev.location||'未設定')}</span></div>
+        <button onclick="confirmAndDelete('イベント『${escapeHtml(ev.title)}』を削除しますか？出欠データも削除されます。', function(){ deleteEvent('${ev.id}'); })" style="color:var(--coral);background:none;border:none;cursor:pointer;font-size:16px;">✕</button>
+      </div>
+    </div>`;
+  });
+  html += `</div>`;
+  return html;
+}
 function renderEventEditPanel(ev){
   return `<div class="edit-panel" onclick="event.stopPropagation()">
     <div class="field"><label>日付・開始時間</label><input id="editDate_${ev.id}" type="datetime-local" value="${ev.date}"></div>
@@ -1028,8 +1051,8 @@ function renderEventEditPanel(ev){
     <div class="field"><label>タイトル</label><input id="editTitle_${ev.id}" value="${escapeHtml(ev.title)}" placeholder="例：全体練習"></div>
     <div class="field"><label>場所</label>${locationFieldHtml(ev.id, ev.location||'')}</div>
     <div class="field"><label>状態</label>
-      <button class="btn ${ev.status==='募集中'?'btn-primary':'btn-ghost'} btn-sm" onclick="setEventStatus('${ev.id}','募集中')">募集中</button>
-      <button class="btn ${ev.status==='決定'?'btn-primary':'btn-ghost'} btn-sm" onclick="setEventStatus('${ev.id}','決定')">決定</button>
+      <button class="btn ${(ev._draftStatus||ev.status)==='募集中'?'btn-primary':'btn-ghost'} btn-sm" onclick="setEventStatus('${ev.id}','募集中')">募集中</button>
+      <button class="btn ${(ev._draftStatus||ev.status)==='決定'?'btn-primary':'btn-ghost'} btn-sm" onclick="setEventStatus('${ev.id}','決定')">決定</button>
     </div>
     <div class="field"><label>${dutyLabel(ev.type)}の必要人数</label>
       <div class="counter-row">
@@ -1038,6 +1061,9 @@ function renderEventEditPanel(ev){
         <button class="counter-btn" onclick="changeEditDutyTarget('${ev.id}',1)">＋</button>
       </div>
       <div class="muted">担当者の決定は「出欠募集中」ページ（管理者モード）で行えます。</div>
+    </div>
+    <div class="field"><label>この予定は呼ばれない人を除外（未回答者に出なくなります）</label>
+      <div class="chip-list" id="editExcludeChips_${ev.id}">${sortedMembers().map(m=>`<div class="chip ${(ev.excludedMemberIds||[]).includes(m.id)?'sel':''}" data-id="${m.id}" onclick="toggleEditExcludeChip(this)">${plainDisplayName(m)}</div>`).join('')}</div>
     </div>
     <button class="btn btn-primary btn-block" onclick="saveEventEdit('${ev.id}')">保存する</button>
   </div>`;
@@ -1050,6 +1076,7 @@ window.changeEditDutyTarget = function(eventId, delta){
   if(ev._draftTarget < 0) ev._draftTarget = 0;
   document.getElementById('editDutyVal_'+eventId).textContent = ev._draftTarget;
 }
+window.toggleEditExcludeChip = function(chipEl){ chipEl.classList.toggle('sel'); }
 window.saveEventEdit = async function(eventId){
   const ev = events.find(e=>e.id===eventId);
   ev.date = document.getElementById('editDate_'+eventId).value;
@@ -1058,6 +1085,7 @@ window.saveEventEdit = async function(eventId){
   ev.location = getLocationValue(eventId);
   ev.dutyTarget = ev._draftTarget!==undefined ? ev._draftTarget : (ev.dutyTarget||0);
   ev.status = ev._draftStatus || ev.status || '募集中';
+  ev.excludedMemberIds = Array.from(document.querySelectorAll(`#editExcludeChips_${eventId} .chip.sel`)).map(c=>c.dataset.id);
   delete ev._draftTarget; delete ev._draftStatus;
   await saveEvents();
   uiState.adminEditingEvent = null;
@@ -1118,7 +1146,7 @@ window.addEvent = async function(){
   const location = getLocationValue('new');
   const type = document.getElementById('eType').value;
   if(!date || !title){ showToast('日時とタイトルを入力してください'); return; }
-  events.push({ id: uid('evt'), date, endTime, title, location, type, status:'募集中', dutyTarget: newEventDraft.dutyTarget, dutyGuardianIds: [], dutyBadges: {} });
+  events.push({ id: uid('evt'), date, endTime, title, location, type, status:'募集中', dutyTarget: newEventDraft.dutyTarget, dutyGuardianIds: [], dutyBadges: {}, excludedMemberIds: [] });
   await saveEvents();
   newEventDraft = { dutyTarget: 1, type: '練習' };
   renderAdmin(); renderInput(); renderOverview();
@@ -1151,7 +1179,7 @@ function adminFiscalYearHtml(){
   const archived = archivedFiscalYears.includes(fy);
   const isPast = fy < currentFiscalYear();
   const fyOptions = years.map(y=>`<option value="${y}" ${y===fy?'selected':''}>${y}年度（${y}/4〜${y+1}/3）</option>`).join('');
-  return `<div class="section-title">年度管理</div>
+  let html = `<div class="section-title">年度管理</div>
     <div class="card">
       <div class="field"><label>対象年度</label><select class="fy-select" style="width:100%;" onchange="uiState.fyManageYear=parseInt(this.value); renderAdmin()">${fyOptions}</select></div>
       <div class="muted" style="margin-bottom:12px;">${archived?'🔒 アーカイブ済み（この年度のイベントは編集できません）':(isPast?'過去の年度です':'進行中の年度です')}</div>
@@ -1166,6 +1194,35 @@ function adminFiscalYearHtml(){
       <button class="btn btn-lemon btn-block" onclick="copyFiscalYearForward(${fy})">🔁 この年度の予定を翌年度にコピー</button>
       <div class="muted" style="margin-top:6px;">タイトル・場所・種別・必要人数を引き継ぎ、日付を1年ずらして「募集中」の新しい予定として作成します（出欠・お当番の決定内容は引き継ぎません）。</div>
     </div>`;
+  if(archived){
+    html += `<div class="card" style="border-color:var(--coral);">
+      <div class="section-title" style="margin-top:0;color:var(--coral);">⚠️ データ整理（完全削除）</div>
+      <div class="muted" style="margin-bottom:10px;">この年度のイベント・出欠・お当番データを、保存領域から完全に削除します。エクスポート（CSV/Excel）を先に取っておくことをおすすめします。この操作は取り消せません。</div>
+      <button class="btn btn-danger btn-block" onclick="confirmAndDelete('${fy}年度のデータを完全に削除します。エクスポートは済んでいますか？この操作は取り消せません。', function(){ purgeFiscalYear(${fy}); })">🗑️ ${fy}年度のデータを完全に削除する</button>
+    </div>`;
+  }
+  if(archivedFiscalYears.length){
+    html += `<div class="section-title">アーカイブ済み年度一覧</div><div class="card">`;
+    [...archivedFiscalYears].sort((a,b)=>b-a).forEach(y=>{
+      html += `<div class="list-item" style="cursor:default;">
+        <div>🔒 ${y}年度（${y}/4〜${y+1}/3）</div>
+        <button class="btn btn-sm btn-ghost" onclick="uiState.fyManageYear=${y}; renderAdmin();">開く</button>
+      </div>`;
+    });
+    html += `</div>`;
+  }
+  return html;
+}
+window.purgeFiscalYear = async function(fy){
+  const targetIds = events.filter(ev=>fiscalYearOf(ev.date)===fy).map(ev=>ev.id);
+  events = events.filter(ev=>fiscalYearOf(ev.date)!==fy);
+  targetIds.forEach(id=>{ delete attendance[id]; delete dutyAttendance[id]; });
+  await saveEvents(); await saveAttendance(); await saveDutyAttendance();
+  await DataStore.set('archive_fy_'+fy, null);
+  archivedFiscalYears = archivedFiscalYears.filter(y=>y!==fy);
+  await saveArchivedFiscalYears();
+  renderAdmin(); renderInput(); renderOverview();
+  showToast(fy+'年度のデータを完全に削除しました');
 }
 window.archiveFiscalYear = async function(fy){
   const snapshot = { events: events.filter(ev=>fiscalYearOf(ev.date)===fy), attendance: {}, dutyAttendance: {} };
@@ -1218,7 +1275,7 @@ window.copyFiscalYearForward = async function(fy){
   const shifted = events.filter(ev=>fiscalYearOf(ev.date)===fy).map(ev=>({
     id: uid('evt'), date: shiftYearInDateTimeLocal(ev.date,1), endTime: ev.endTime,
     title: ev.title, location: ev.location, type: ev.type, status:'募集中',
-    dutyTarget: ev.dutyTarget, dutyGuardianIds: [], dutyBadges: {}
+    dutyTarget: ev.dutyTarget, dutyGuardianIds: [], dutyBadges: {}, excludedMemberIds: []
   }));
   if(shifted.length===0){ showToast('コピー対象のイベントがありません'); return; }
   events = events.concat(shifted);
