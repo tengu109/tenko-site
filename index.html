@@ -13,8 +13,8 @@
   --lemon:#FFFF99;
   --lemon-deep:#4FADAD;
   --lemon-pale:#EAF7F7;
-  --teal:#66CCCC;
-  --teal-deep:#3A8F8F;
+  --teal:#008080;
+  --teal-deep:#005F5F;
   --card:#FFFFFF;
   --ink:#20291F;
   --line:#E4E4E4;
@@ -144,10 +144,22 @@ table.duty2 td.total-col{font-weight:700;background:var(--lemon-pale);}
 .modal-box input{width:100%;padding:10px;border:1px solid var(--line);border-radius:8px;font-size:18px;letter-spacing:.2em;text-align:center;margin-bottom:12px;}
 .modal-actions{display:flex;gap:8px;}
 .modal-actions button{flex:1;}
+.site-gate{position:fixed;inset:0;background:var(--lemon);display:flex;align-items:center;justify-content:center;z-index:1000;padding:20px;}
+.site-gate-box{background:#fff;border-radius:16px;padding:32px 24px;width:100%;max-width:320px;text-align:center;box-shadow:0 4px 20px rgba(0,0,0,.12);}
+.site-gate-box input{width:100%;padding:14px;border:2px solid var(--teal);border-radius:10px;font-size:24px;letter-spacing:.4em;text-align:center;font-family:'Roboto Mono',monospace;}
 </style>
 </head>
 <body>
-<div id="app">
+<div id="siteGate" class="site-gate">
+  <div class="site-gate-box">
+    <div class="brand" style="justify-content:center;margin-bottom:6px;"><span class="dot"></span>TENKO！</div>
+    <div class="muted" style="margin-bottom:16px;">4桁のパスコードを入力してください</div>
+    <input id="siteGateInput" type="password" inputmode="numeric" maxlength="4" placeholder="••••" autocomplete="off">
+    <button class="btn btn-primary btn-block" style="margin-top:12px;" onclick="submitSitePasscode()">入る</button>
+    <div class="muted" id="siteGateError" style="color:var(--coral);margin-top:10px;height:16px;"></div>
+  </div>
+</div>
+<div id="app" style="display:none;">
   <div class="topbar">
     <div class="brand-row">
       <div class="brand"><span class="dot"></span>TENKO！</div>
@@ -169,7 +181,7 @@ table.duty2 td.total-col{font-weight:700;background:var(--lemon-pale);}
   <div class="modal-box">
     <h3>管理者モードに切替</h3>
     <p>管理者用パスコードを入力してください</p>
-    <input id="pcInput" type="password" inputmode="numeric" maxlength="8" placeholder="••••">
+    <input id="pcInput" type="password" inputmode="numeric" maxlength="8" placeholder="••••" autocomplete="off">
     <div class="modal-actions">
       <button class="btn btn-ghost" onclick="closePcModal()">キャンセル</button>
       <button class="btn btn-primary" onclick="submitPasscode()">確認</button>
@@ -201,6 +213,7 @@ let dutyBadges = [];     // {code,label} extensible badge master list (未/兼 e
 let surveyAnswers = {};  // { [eventId]: { [questionId]: { [memberId]: {status, note} } } } — free-form ◯✕△ polls (e.g. 現地集合/解散, 移動手段)
 let archivedFiscalYears = []; // [2024, 2025, ...] years locked to read-only
 let adminPasscode = '0000';
+let sitePasscode = '0000'; // サイト入場用パスコード（管理者パスコードとは別物）
 let isAdmin = false;
 let pendingTab = null;
 
@@ -245,7 +258,11 @@ let db = null;
 if(typeof firebase === 'undefined'){
   // FirebaseのCDNスクリプトが読み込めなかった場合、ここで気づけるようにする
   document.addEventListener('DOMContentLoaded', ()=>{
-    document.getElementById('app').innerHTML = `<div style="padding:40px 20px;text-align:center;color:#B23A26;">
+    const gate = document.getElementById('siteGate');
+    if(gate) gate.style.display = 'none';
+    const appEl = document.getElementById('app');
+    appEl.style.display = 'flex';
+    appEl.innerHTML = `<div style="padding:40px 20px;text-align:center;color:#B23A26;">
       <div style="font-size:34px;margin-bottom:8px;">⚠️</div>
       Firebaseの読み込みに失敗しました。<br>通信環境や広告ブロック機能をご確認のうえ、ページを再読み込みしてください。
     </div>`;
@@ -273,6 +290,35 @@ const DataStore = {
     catch(e){ console.error('DataStore.set error:', key, e); showToast('保存に失敗しました（通信をご確認ください）'); return null; }
   }
 };
+
+// サイト入場パスコードは、他の全データより先に取得しておく
+// （画面ロック中でも、パスコード自体はすぐ照合できるようにするため）
+const sitePasscodeReady = (async ()=>{
+  sitePasscode = await DataStore.get('site_passcode', '0000');
+  return sitePasscode;
+})();
+window.submitSitePasscode = async function(){
+  const input = document.getElementById('siteGateInput');
+  const errEl = document.getElementById('siteGateError');
+  const val = input.value;
+  errEl.textContent = '確認中…';
+  const correct = await sitePasscodeReady;
+  if(val === correct){
+    document.getElementById('siteGate').style.display = 'none';
+    document.getElementById('app').style.display = 'flex';
+    loadAll();
+  }else{
+    errEl.textContent = 'パスコードが違います';
+    input.value = '';
+    input.focus();
+  }
+}
+document.addEventListener('DOMContentLoaded', ()=>{
+  const gateInput = document.getElementById('siteGateInput');
+  if(gateInput){
+    gateInput.addEventListener('keydown', (e)=>{ if(e.key==='Enter') submitSitePasscode(); });
+  }
+});
 
 async function loadAll(){
   members = await DataStore.get('members', []);
@@ -351,6 +397,7 @@ async function saveLocations(){ await DataStore.set('locations', locations); }
 async function saveAttendance(){ await DataStore.set('attendance', attendance); }
 async function saveDutyAttendance(){ await DataStore.set('duty_attendance', dutyAttendance); }
 async function savePasscode(){ await DataStore.set('admin_passcode', adminPasscode); }
+async function saveSitePasscode(){ await DataStore.set('site_passcode', sitePasscode); }
 async function saveDutyBadges(){ await DataStore.set('duty_badges', dutyBadges); }
 async function saveArchivedFiscalYears(){ await DataStore.set('archived_fiscal_years', archivedFiscalYears); }
 async function saveSurveyAnswers(){ await DataStore.set('survey_answers', surveyAnswers); }
@@ -647,7 +694,7 @@ function renderStatusButtons(ev, memberId, st, source){
   const notePlaceholder = ev.type==='本番' ? '例：出演と兼任／未就学児の付き添いあり' : '例：18:30到着予定';
   let out = `<div class="status-buttons">${btns}</div>
     <div class="note-label">メモ（連絡事項など）</div>
-    <input class="note-input" placeholder="${notePlaceholder}" value="${escapeHtml(note)}" onclick="event.stopPropagation()" oninput="setNote('${ev.id}','${memberId}',this.value)">`;
+    <input class="note-input" type="text" autocomplete="off" data-lpignore="true" placeholder="${notePlaceholder}" value="${escapeHtml(note)}" onclick="event.stopPropagation()" oninput="setNote('${ev.id}','${memberId}',this.value)">`;
   return out;
 }
 function renderDutyStatusButtons(eventId, guardianId, dst){
@@ -657,7 +704,7 @@ function renderDutyStatusButtons(eventId, guardianId, dst){
   let btns = symbols.map(s=>`<button class="status-btn ${cur===s?'sel-'+s:''}" onclick="event.stopPropagation();setDutyStatus('${eventId}','${guardianId}','${s}')">${s}</button>`).join('');
   return `<div class="status-buttons">${btns}</div>
     <div class="note-label">メモ（連絡事項など）</div>
-    <input class="note-input" placeholder="例：18時から遅れて合流します" value="${escapeHtml(note)}" onclick="event.stopPropagation()" oninput="setDutyNote('${eventId}','${guardianId}',this.value)">`;
+    <input class="note-input" type="text" autocomplete="off" data-lpignore="true" placeholder="例：18時から遅れて合流します" value="${escapeHtml(note)}" onclick="event.stopPropagation()" oninput="setDutyNote('${eventId}','${guardianId}',this.value)">`;
 }
 function renderSurveyAnswerButtons(eventId, questionId, memberId, ans){
   const cur = ans ? ans.status : null;
@@ -666,7 +713,7 @@ function renderSurveyAnswerButtons(eventId, questionId, memberId, ans){
   let btns = symbols.map(s=>`<button class="status-btn ${cur===s?'sel-'+s:''}" onclick="event.stopPropagation();setSurveyAnswer('${eventId}','${questionId}','${memberId}','${s}')">${s}</button>`).join('');
   return `<div class="status-buttons">${btns}</div>
     <div class="note-label">メモ（連絡事項など）</div>
-    <input class="note-input" placeholder="例：自転車で来ます" value="${escapeHtml(note)}" onclick="event.stopPropagation()" oninput="setSurveyNote('${eventId}','${questionId}','${memberId}',this.value)">`;
+    <input class="note-input" type="text" autocomplete="off" data-lpignore="true" placeholder="例：自転車で来ます" value="${escapeHtml(note)}" onclick="event.stopPropagation()" oninput="setSurveyNote('${eventId}','${questionId}','${memberId}',this.value)">`;
 }
 window.toggleSurveyExpand = function(key){ uiState.inputExpandedSurvey = (uiState.inputExpandedSurvey===key)?null:key; renderInput(); }
 window.setSurveyAnswer = async function(eventId, questionId, memberId, status){
@@ -744,6 +791,57 @@ window.toggleDutyBadgeOverview = window.toggleDutyBadge;
 /* =========================================================
    出欠調整 (決定した予定の結果を閲覧／お当番出欠依頼欄は自動で非表示)
 ========================================================= */
+function buildLineShareText(ev){
+  const attending = [], absent = [], hold = [], noResponse = [];
+  activeMembersFor(ev).forEach(mem=>{
+    const st = statusOf(ev.id, mem.id);
+    if(!st || !st.status){ noResponse.push(mem); return; }
+    if(st.status==='◯' || st.status==='遅' || st.status==='早'){ attending.push({mem, note: st.note||''}); }
+    else if(st.status==='✕'){ absent.push(mem); }
+    else if(st.status==='△'){ hold.push(mem); }
+  });
+  const decidedGuardians = (ev.dutyGuardianIds||[]).map(id=>guardians.find(g=>g.id===id)).filter(Boolean);
+  const dutyNames = decidedGuardians.length ? decidedGuardians.map(g=>withSan(g.name)).join('、') : '未定';
+
+  const lines = [];
+  lines.push(`■ ${fmtEventWhen(ev)} ${ev.title}`);
+  lines.push(`場所：${ev.location||'未設定'}`);
+  lines.push(`${dutyLabel(ev.type)}：${dutyNames}`);
+  lines.push('');
+  lines.push(`【出席者（${attending.length}名）】`);
+  if(attending.length===0) lines.push('なし');
+  attending.forEach((a,i)=>{ lines.push(`${i+1}. ${plainDisplayName(a.mem)}${a.note?`（${a.note}）`:''}`); });
+  lines.push('');
+  lines.push(`【欠席者（${absent.length}名）】`);
+  if(absent.length===0) lines.push('・なし'); else absent.forEach(m=>lines.push(`・${plainDisplayName(m)}`));
+  lines.push('');
+  lines.push(`【保留（${hold.length}名）】`);
+  if(hold.length===0) lines.push('・なし'); else hold.forEach(m=>lines.push(`・${plainDisplayName(m)}`));
+  lines.push('');
+  lines.push(`【未回答（${noResponse.length}名）】`);
+  if(noResponse.length===0) lines.push('・なし'); else noResponse.forEach(m=>lines.push(`・${plainDisplayName(m)}`));
+  return lines.join('\n');
+}
+window.copyLineText = async function(eventId){
+  const ev = events.find(e=>e.id===eventId);
+  if(!ev) return;
+  const text = buildLineShareText(ev);
+  try{
+    await navigator.clipboard.writeText(text);
+    showToast('コピーしました！');
+  }catch(err){
+    try{
+      const ta = document.getElementById('lineTextPreview_'+eventId);
+      ta.removeAttribute('readonly');
+      ta.select();
+      document.execCommand('copy');
+      ta.setAttribute('readonly', 'true');
+      showToast('コピーしました！');
+    }catch(err2){
+      showToast('コピーに失敗しました。テキストを長押しして手動でコピーしてください');
+    }
+  }
+}
 function renderOverview(){
   const el = document.getElementById('screen-overview');
   let html = `<div class="segment">
@@ -809,6 +907,10 @@ function renderOverview(){
   html += `<div class="group-title">未回答者（${noResponse.length}名）</div>`;
   html += noResponse.length ? noResponse.map(m=>overviewRow(m)).join('') : `<div class="namelist warn muted">全員回答済みです</div>`;
   html += `<div class="muted" style="margin-top:10px;">※名前をタップすると出欠・メモを修正できます</div>`;
+
+  html += `<div class="section-title">📱 LINE共有用テキスト</div>
+    <textarea class="note-input" id="lineTextPreview_${ev.id}" readonly style="width:100%;min-height:180px;white-space:pre-wrap;font-family:'Roboto Mono',monospace;font-size:12px;line-height:1.6;">${escapeHtml(buildLineShareText(ev))}</textarea>
+    <button class="btn btn-lemon btn-block" style="margin-top:8px;" onclick="copyLineText('${ev.id}')">📋 LINE用テキストをコピー</button>`;
 
   if(ev.showSurveyOnDecided && (ev.surveyQuestions||[]).length){
     ev.surveyQuestions.forEach(q=>{
@@ -883,6 +985,12 @@ window.setAdminSubTab = function(t){ uiState.adminSubTab=t; renderAdmin(); }
 function adminSettingsHtml(){
   let html = adminLocationsHtml();
   html += adminDutyBadgesHtml();
+  html += `<div class="section-title">サイト入場パスコード変更（第三者の閲覧防止・4桁）</div>
+    <div class="card">
+      <div class="muted" style="margin-bottom:8px;">サイトを開く際に全員が入力する4桁のパスコードです。管理者パスコードとは別物です。</div>
+      <div class="field"><label>新しい入場パスコード（4桁）</label><input id="newSitePasscode" maxlength="4" inputmode="numeric" placeholder="例：1234"></div>
+      <button class="btn btn-ghost btn-block" onclick="changeSitePasscode()">入場パスコードを更新</button>
+    </div>`;
   html += `<div class="section-title">管理者パスコード変更</div>
     <div class="card">
       <div class="field"><label>新しいパスコード</label><input id="newPasscode" placeholder="半角数字など"></div>
@@ -897,7 +1005,7 @@ function adminMembersHtml(){
       <div class="field"><label>名前</label><input id="mName" placeholder="例：天狗花子"></div>
       <div class="field"><label>ふりがな</label><input id="mFuri" placeholder="例：てんぐはなこ"></div>
       <div class="field"><label>学年（表示用）</label><input id="mGrade" placeholder="例：年長、1年、5年"></div>
-      <div class="field"><label>学年数値（0以下で ◉ が付きます。年長=0、未就学=-1 など）</label><input id="mGradeVal" type="number" placeholder="例：5"></div>
+      <div class="field"><label>学年数値（0以下で ◉ が付きます。年長=0、年中=-1、年少=-2 など）</label><input id="mGradeVal" type="number" placeholder="例：5"></div>
       <div class="field"><label>入連日（西暦年月）</label><input id="mJoinDate" type="month"></div>
       <button class="btn btn-primary btn-block" onclick="addMember()">＋ メンバーを追加</button>
     </div>`;
@@ -1157,6 +1265,27 @@ function adminEventsHtml(){
   }
   return html;
 }
+function pastEventDetailHtml(ev){
+  const decided = (ev.dutyGuardianIds||[]).map(id=>guardians.find(g=>g.id===id)).filter(Boolean);
+  const attending=[], absent=[], hold=[], noResponse=[];
+  activeMembersFor(ev).forEach(mem=>{
+    const st = statusOf(ev.id, mem.id);
+    if(!st || !st.status){ noResponse.push(mem); return; }
+    if(st.status==='◯'||st.status==='遅'||st.status==='早') attending.push(mem);
+    else if(st.status==='✕') absent.push(mem);
+    else if(st.status==='△') hold.push(mem);
+  });
+  return `<div class="edit-panel" onclick="event.stopPropagation()">
+    <div class="muted" style="margin-bottom:6px;">🔒 年度が確定しているため編集はできません（内容の確認のみ）</div>
+    <div class="muted">${dutyLabel(ev.type)}：${decided.length ? decided.map(g=>withSan(g.name)).join('、') : '未定'}</div>
+    <div class="namelist" style="margin-top:8px;">
+      出席者（${attending.length}名）：${attending.length?attending.map(m=>plainDisplayName(m)).join('、'):'なし'}<br>
+      欠席者（${absent.length}名）：${absent.length?absent.map(m=>plainDisplayName(m)).join('、'):'なし'}<br>
+      保留（${hold.length}名）：${hold.length?hold.map(m=>plainDisplayName(m)).join('、'):'なし'}<br>
+      未回答（${noResponse.length}名）：${noResponse.length?noResponse.map(m=>plainDisplayName(m)).join('、'):'なし'}
+    </div>
+  </div>`;
+}
 function pastEventsHtml(){
   let html = `<div class="segment">
     <div class="seg-btn ${uiState.pastEventsType==='練習'?'active':''}" onclick="setPastEventsType('練習')">練習</div>
@@ -1167,15 +1296,17 @@ function pastEventsHtml(){
   if(pastEvents.length===0){
     return html + `<div class="empty"><div class="big">📁</div>過去の${uiState.pastEventsType}はまだありません。</div>`;
   }
-  html += `<div class="muted" style="margin-bottom:8px;">終了した予定はここにまとまります。「出欠募集中」「今後の予定」には表示されません。</div>`;
+  html += `<div class="muted" style="margin-bottom:8px;">終了した予定はここにまとまります。タップで詳細を確認できます。</div>`;
   html += `<div class="card">`;
   pastEvents.forEach(ev=>{
     const fyLocked = isPastOrArchivedFY(fiscalYearOf(ev.date));
-    html += `<div class="list-item" style="flex-direction:column;align-items:stretch;cursor:default;">
+    const isEditing = uiState.adminEditingEvent===ev.id;
+    html += `<div class="list-item" onclick="toggleEditEvent('${ev.id}')" style="flex-direction:column;align-items:stretch;">
       <div style="display:flex;justify-content:space-between;align-items:center;">
         <div><span class="event-date">${fmtEventWhen(ev)}</span><span class="event-type ${ev.type}">${ev.type}</span><span class="status-tag ${ev.status}">${ev.status}</span>${fyLocked?' <span class="muted">🔒年度確定済み</span>':''}<br><b>${escapeHtml(ev.title)}</b><br><span class="muted">📍${escapeHtml(ev.location||'未設定')}</span></div>
-        <button onclick="confirmAndDelete('イベント『${escapeHtml(ev.title)}』を削除しますか？出欠データも削除されます。', function(){ deleteEvent('${ev.id}'); })" style="color:var(--coral);background:none;border:none;cursor:pointer;font-size:16px;">✕</button>
+        <button onclick="event.stopPropagation();confirmAndDelete('イベント『${escapeHtml(ev.title)}』を削除しますか？出欠データも削除されます。', function(){ deleteEvent('${ev.id}'); })" style="color:var(--coral);background:none;border:none;cursor:pointer;font-size:16px;">✕</button>
       </div>
+      ${isEditing ? (fyLocked ? pastEventDetailHtml(ev) : renderEventEditPanel(ev)) : ''}
     </div>`;
   });
   html += `</div>`;
@@ -1209,7 +1340,7 @@ function renderEventEditPanel(ev){
       <div class="chip-list" style="margin-bottom:6px;">
         ${(ev.surveyQuestions||[]).map(q=>`<div class="chip sel">${escapeHtml(q.text)} <span onclick="event.stopPropagation();confirmAndDelete('質問『${escapeHtml(q.text)}』を削除しますか？回答も削除されます。', function(){ deleteSurveyQuestion('${ev.id}','${q.id}'); })" style="margin-left:4px;cursor:pointer;">✕</span></div>`).join('') || '<span class="muted">まだ質問はありません</span>'}
       </div>
-      <input id="newSurveyQ_${ev.id}" class="note-input" placeholder="例：現地集合か解散か">
+      <input id="newSurveyQ_${ev.id}" class="note-input" type="text" autocomplete="off" data-lpignore="true" placeholder="例：現地集合か解散か">
       <button class="btn btn-ghost btn-sm btn-block" style="margin-top:6px;" onclick="addSurveyQuestion('${ev.id}')">＋ 質問を追加</button>
       <div class="muted" style="margin:8px 0 4px;">「決定」後（今後の予定ページ）でもこのアンケート結果を表示しますか？</div>
       <button class="btn btn-sm ${ev.showSurveyOnDecided?'btn-primary':'btn-ghost'}" onclick="toggleShowSurveyOnDecided('${ev.id}')">${ev.showSurveyOnDecided?'✅ 表示する（タップで非表示に切替）':'表示しない（タップで表示に切替）'}</button>
@@ -1342,6 +1473,13 @@ window.changePasscode = async function(){
   document.getElementById('newPasscode').value='';
   showToast('パスコードを更新しました');
 }
+window.changeSitePasscode = async function(){
+  const val = document.getElementById('newSitePasscode').value.trim();
+  if(!/^\d{4}$/.test(val)){ showToast('4桁の数字で入力してください'); return; }
+  sitePasscode = val; await saveSitePasscode();
+  document.getElementById('newSitePasscode').value='';
+  showToast('入場パスコードを更新しました（次回以降のアクセスから反映されます）');
+}
 
 /* =========================================================
    年度管理（アーカイブ／エクスポート／年度コピー）
@@ -1465,7 +1603,7 @@ window.copyFiscalYearForward = async function(fy){
 ========================================================= */
 function availableFiscalYears(){ const years = new Set(); events.forEach(ev=> years.add(fiscalYearOf(ev.date))); return [...years].sort((a,b)=>b-a); }
 function dutyDashboardHtml(){
-  if(members.length===0) return `<div class="empty"><div class="big">🎽</div>メンバーを登録すると<br>お当番集計が表示されます。</div>`;
+  if(guardians.length===0) return `<div class="empty"><div class="big">🎽</div>保護者を登録すると<br>お当番集計が表示されます。</div>`;
   let html = `<div class="segment">
     <div class="seg-btn ${uiState.dutyType==='練習'?'active':''}" onclick="setDutyType('練習')">練習（見守り当番）</div>
     <div class="seg-btn ${uiState.dutyType==='本番'?'active':''}" onclick="setDutyType('本番')">本番（付添保護者）</div>
@@ -1478,31 +1616,31 @@ function dutyDashboardHtml(){
     <div class="section-title" style="margin:0;">${dutyLabel(uiState.dutyType)}（担当決定分のみ集計）</div>
     <select class="fy-select" onchange="uiState.dutyFY=parseInt(this.value); renderAdmin()">${fyOptions}</select>
   </div>`;
-  const roster = sortedMembers();
-  const matrix = {}; roster.forEach(m=> matrix[m.id] = new Array(12).fill(0));
+  const roster = sortedGuardians();
+  const matrix = {}; roster.forEach(g=> matrix[g.id] = new Array(12).fill(0));
   events.filter(ev=> ev.type===uiState.dutyType && fiscalYearOf(ev.date)===uiState.dutyFY).forEach(ev=>{
     const idx = monthIndexInFY(ev.date);
-    (ev.dutyGuardianIds||[]).forEach(gid=>{ const g = guardians.find(x=>x.id===gid); if(g){ guardianMemberIds(g).forEach(mid=>{ if(matrix[mid]) matrix[mid][idx]++; }); } });
+    (ev.dutyGuardianIds||[]).forEach(gid=>{ if(matrix[gid]) matrix[gid][idx]++; });
   });
-  const totals = roster.map(m=> matrix[m.id].reduce((a,b)=>a+b,0));
-  const minTotal = Math.min(...totals);
+  const totals = roster.map(g=> matrix[g.id].reduce((a,b)=>a+b,0));
+  const minTotal = totals.length ? Math.min(...totals) : 0;
   html += `<div class="duty-scroll"><table class="duty2">
-    <thead><tr><th class="name-col">名前</th>${FY_MONTH_ORDER.map(m=>`<th>${m}月</th>`).join('')}<th>年度計</th></tr></thead><tbody>`;
-  roster.forEach((m,i)=>{
-    html += `<tr><td class="name-col">${displayName(m)}</td>`;
-    matrix[m.id].forEach(c=>{ html += `<td>${c||''}</td>`; });
+    <thead><tr><th class="name-col">保護者名</th>${FY_MONTH_ORDER.map(m=>`<th>${m}月</th>`).join('')}<th>年度計</th></tr></thead><tbody>`;
+  roster.forEach((g,i)=>{
+    html += `<tr><td class="name-col">${escapeHtml(withSan(g.name))}</td>`;
+    matrix[g.id].forEach(c=>{ html += `<td>${c||''}</td>`; });
     html += `<td class="total-col ${totals[i]===minTotal?'duty-low':''}">${totals[i]}</td></tr>`;
   });
   html += `</tbody></table></div>`;
-  html += `<div class="muted">※「出欠募集中」ページで担当を決定するとここに反映されます。赤字は当該年度で回数が最も少ないご家庭です。</div>`;
+  html += `<div class="muted">※「出欠募集中」ページで担当を決定するとここに反映されます。赤字は当該年度で回数が最も少ない保護者です。</div>`;
   return html;
 }
 window.setDutyType = function(t){ uiState.dutyType=t; renderAdmin(); }
 
 /* =========================================================
    INIT
+   （loadAll() はサイト入場パスコード通過後、submitSitePasscode() から呼ばれます）
 ========================================================= */
-loadAll();
 </script>
 </body>
 </html>
