@@ -440,6 +440,12 @@ function activeMembersFor(ev){
   const excluded = (ev && ev.excludedMemberIds) || [];
   return sortedMembers().filter(m=>!excluded.includes(m.id));
 }
+function unansweredFirstFor(ev){
+  const active = activeMembersFor(ev);
+  const unanswered = active.filter(m=>{ const st = statusOf(ev.id, m.id); return !st || !st.status; });
+  const answered = active.filter(m=>{ const st = statusOf(ev.id, m.id); return st && st.status; });
+  return [...unanswered, ...answered];
+}
 function fmtYearMonth(ym){
   if(!ym) return '';
   const parts = String(ym).split('-');
@@ -602,10 +608,11 @@ function renderInput(){
       <h3>${escapeHtml(ev.title)}</h3>
       <div class="muted">📍 ${escapeHtml(ev.location||'未設定')}</div>
       ${ev.deadline?`<div class="muted" style="color:var(--coral);font-weight:700;">⏰ 回答期限：${fmtDeadline(ev.deadline)}まで（期限後も変更は可能です）</div>`:''}
+      ${ev.memo?`<div class="muted" style="margin-top:4px;">📝 ${escapeHtml(ev.memo)}</div>`:''}
       <div class="muted">🎽 ${dutyLabel(ev.type)}：${decidedGuardians.length ? decidedGuardians.map(g=>guardianNameWithBadgesHtml(ev,g)).join('、') : '未定'}（${decidedGuardians.length}/${ev.dutyTarget||0}人決定）</div>
     </div>
-    <div class="section-title">名前を選んで出欠を入力</div>`;
-  activeMembersFor(ev).forEach(mem=>{
+    <div class="section-title">名前を選んで出欠を入力（未回答の方が上に表示されます）</div>`;
+  unansweredFirstFor(ev).forEach(mem=>{
     const st = statusOf(ev.id, mem.id);
     const pillClass = st ? 'pill-'+st.status : 'pill-未';
     const pillText = st ? st.status : '未回答';
@@ -693,6 +700,7 @@ function renderStatusButtons(ev, memberId, st, source){
   let btns = symbols.map(s=>`<button class="status-btn ${cur===s?'sel-'+s:''}" onclick="event.stopPropagation();setStatus('${ev.id}','${memberId}','${s}','${source}')">${s}</button>`).join('');
   const notePlaceholder = ev.type==='本番' ? '例：出演と兼任／未就学児の付き添いあり' : '例：18:30到着予定';
   let out = `<div class="status-buttons">${btns}</div>
+    ${cur ? `<div class="muted" style="margin-top:4px;cursor:pointer;color:var(--teal-deep);text-decoration:underline;" onclick="event.stopPropagation();resetStatus('${ev.id}','${memberId}','${source}')">↺ 未回答に戻す</div>` : ''}
     <div class="note-label">メモ（連絡事項など）</div>
     <input class="note-input" type="text" autocomplete="off" data-lpignore="true" placeholder="${notePlaceholder}" value="${escapeHtml(note)}" onclick="event.stopPropagation()" oninput="setNote('${ev.id}','${memberId}',this.value)">`;
   return out;
@@ -703,6 +711,7 @@ function renderDutyStatusButtons(eventId, guardianId, dst){
   const symbols = ['◯','✕','△'];
   let btns = symbols.map(s=>`<button class="status-btn ${cur===s?'sel-'+s:''}" onclick="event.stopPropagation();setDutyStatus('${eventId}','${guardianId}','${s}')">${s}</button>`).join('');
   return `<div class="status-buttons">${btns}</div>
+    ${cur ? `<div class="muted" style="margin-top:4px;cursor:pointer;color:var(--teal-deep);text-decoration:underline;" onclick="event.stopPropagation();resetDutyStatus('${eventId}','${guardianId}')">↺ 未回答に戻す</div>` : ''}
     <div class="note-label">メモ（連絡事項など）</div>
     <input class="note-input" type="text" autocomplete="off" data-lpignore="true" placeholder="例：18時から遅れて合流します" value="${escapeHtml(note)}" onclick="event.stopPropagation()" oninput="setDutyNote('${eventId}','${guardianId}',this.value)">`;
 }
@@ -712,6 +721,7 @@ function renderSurveyAnswerButtons(eventId, questionId, memberId, ans){
   const symbols = ['◯','✕','△'];
   let btns = symbols.map(s=>`<button class="status-btn ${cur===s?'sel-'+s:''}" onclick="event.stopPropagation();setSurveyAnswer('${eventId}','${questionId}','${memberId}','${s}')">${s}</button>`).join('');
   return `<div class="status-buttons">${btns}</div>
+    ${cur ? `<div class="muted" style="margin-top:4px;cursor:pointer;color:var(--teal-deep);text-decoration:underline;" onclick="event.stopPropagation();resetSurveyAnswer('${eventId}','${questionId}','${memberId}')">↺ 未回答に戻す</div>` : ''}
     <div class="note-label">メモ（連絡事項など）</div>
     <input class="note-input" type="text" autocomplete="off" data-lpignore="true" placeholder="例：自転車で来ます" value="${escapeHtml(note)}" onclick="event.stopPropagation()" oninput="setSurveyNote('${eventId}','${questionId}','${memberId}',this.value)">`;
 }
@@ -723,6 +733,11 @@ window.setSurveyAnswer = async function(eventId, questionId, memberId, status){
   surveyAnswers[eventId][questionId][memberId] = { status, note: prev.note||'' };
   await saveSurveyAnswers(); renderInput();
   showToast('回答を更新しました');
+}
+window.resetSurveyAnswer = async function(eventId, questionId, memberId){
+  if(surveyAnswers[eventId] && surveyAnswers[eventId][questionId]) delete surveyAnswers[eventId][questionId][memberId];
+  await saveSurveyAnswers(); renderInput();
+  showToast('未回答に戻しました');
 }
 window.setSurveyNote = async function(eventId, questionId, memberId, note){
   if(!surveyAnswers[eventId]) surveyAnswers[eventId] = {};
@@ -743,6 +758,12 @@ window.setStatus = async function(eventId, memberId, status, source){
   if(source==='overview') renderOverview(); else renderInput();
   showToast('出欠を更新しました');
 }
+window.resetStatus = async function(eventId, memberId, source){
+  if(attendance[eventId]) delete attendance[eventId][memberId];
+  await saveAttendance();
+  if(source==='overview') renderOverview(); else renderInput();
+  showToast('未回答に戻しました');
+}
 window.setNote = async function(eventId, memberId, note){
   if(!attendance[eventId]) attendance[eventId] = {};
   if(!attendance[eventId][memberId]) attendance[eventId][memberId] = {status:null, note:'', guardianNote:''};
@@ -760,6 +781,10 @@ window.setDutyStatus = async function(eventId, guardianId, status){
   const prev = dutyAttendance[eventId][guardianId] || {};
   dutyAttendance[eventId][guardianId] = { status, note: prev.note||'' };
   await saveDutyAttendance(); renderInput(); showToast('お当番の出欠を更新しました');
+}
+window.resetDutyStatus = async function(eventId, guardianId){
+  if(dutyAttendance[eventId]) delete dutyAttendance[eventId][guardianId];
+  await saveDutyAttendance(); renderInput(); showToast('未回答に戻しました');
 }
 window.setDutyNote = async function(eventId, guardianId, note){
   if(!dutyAttendance[eventId]) dutyAttendance[eventId] = {};
@@ -875,6 +900,7 @@ function renderOverview(){
     <span class="event-date">${fmtEventWhen(ev)}</span><span class="event-type ${ev.type}">${ev.type}</span>
     <h3>${escapeHtml(ev.title)}</h3>
     <div class="muted">📍 ${escapeHtml(ev.location||'未設定')}</div>
+    ${ev.memo?`<div class="muted">📝 ${escapeHtml(ev.memo)}</div>`:''}
     <div class="muted">🎽 ${dutyLabel(ev.type)}：${decidedGuardians.length ? decidedGuardians.map(g=>guardianNameWithBadgesHtml(ev,g)).join('、') : '未定'}</div>
   </div>`;
   html += `
@@ -1230,10 +1256,11 @@ function adminEventsHtml(){
       <div class="field"><label>タイトル</label><input id="eTitle" placeholder="例：全体練習"></div>
       <div class="field"><label>場所</label>${locationFieldHtml('new','')}</div>
       <div class="field"><label>回答期限（この日までに出欠回答をお願いします）</label><input id="eDeadline" type="date"></div>
-      <div class="field"><label>${dutyLabel(newEventDraft.type)}の必要人数</label>
+      <div class="field"><label>メモ（持ち物・集合場所など。必要な時だけでOK）</label><textarea id="eMemo" class="note-input" style="min-height:60px;" placeholder="例：持ち物：雨具／集合場所：正面玄関"></textarea></div>
+      <div class="field"><label id="newDutyLabel">${dutyLabel(newEventDraft.type)}の必要人数</label>
         <div class="counter-row">
           <button class="counter-btn" onclick="changeNewDutyTarget(-1)">－</button>
-          <div class="counter-val">${newEventDraft.dutyTarget}</div>
+          <div class="counter-val" id="newDutyCounterVal">${newEventDraft.dutyTarget}</div>
           <button class="counter-btn" onclick="changeNewDutyTarget(1)">＋</button>
         </div>
       </div>
@@ -1320,6 +1347,7 @@ function renderEventEditPanel(ev){
     <div class="field"><label>タイトル</label><input id="editTitle_${ev.id}" value="${escapeHtml(ev.title)}" placeholder="例：全体練習"></div>
     <div class="field"><label>場所</label>${locationFieldHtml(ev.id, ev.location||'')}</div>
     <div class="field"><label>回答期限（この日までに出欠回答をお願いします）</label><input id="editDeadline_${ev.id}" type="date" value="${ev.deadline||''}"></div>
+    <div class="field"><label>メモ（持ち物・集合場所など。必要な時だけでOK）</label><textarea id="editMemo_${ev.id}" class="note-input" style="min-height:60px;" placeholder="例：持ち物：雨具／集合場所：正面玄関">${escapeHtml(ev.memo||'')}</textarea></div>
     <div class="field"><label>状態</label>
       <button class="btn ${(ev._draftStatus||ev.status)==='募集中'?'btn-primary':'btn-ghost'} btn-sm" onclick="setEventStatus('${ev.id}','募集中')">募集中</button>
       <button class="btn ${(ev._draftStatus||ev.status)==='決定'?'btn-primary':'btn-ghost'} btn-sm" onclick="setEventStatus('${ev.id}','決定')">決定</button>
@@ -1389,6 +1417,7 @@ window.saveEventEdit = async function(eventId){
   ev.title = document.getElementById('editTitle_'+eventId).value.trim();
   ev.location = getLocationValue(eventId);
   ev.deadline = document.getElementById('editDeadline_'+eventId).value;
+  ev.memo = document.getElementById('editMemo_'+eventId).value.trim();
   ev.dutyTarget = ev._draftTarget!==undefined ? ev._draftTarget : (ev.dutyTarget||0);
   ev.status = ev._draftStatus || ev.status || '募集中';
   ev.excludedMemberIds = Array.from(document.querySelectorAll(`#editExcludeChips_${eventId} .chip.sel`)).map(c=>c.dataset.id);
@@ -1398,12 +1427,19 @@ window.saveEventEdit = async function(eventId){
   renderAdmin(); renderInput(); renderOverview();
   showToast('イベントを更新しました');
 }
-window.changeNewDutyTarget = function(delta){ newEventDraft.dutyTarget = Math.max(0, newEventDraft.dutyTarget + delta); renderAdmin(); }
+window.changeNewDutyTarget = function(delta){
+  newEventDraft.dutyTarget = Math.max(0, newEventDraft.dutyTarget + delta);
+  const el = document.getElementById('newDutyCounterVal');
+  if(el) el.textContent = newEventDraft.dutyTarget;
+}
 window.setNewEventType = function(t){
   newEventDraft.type = t;
   // 練習は通常1人、本番は複数人（10人以上）を想定した初期値。+/-で自由に調整可能。
   newEventDraft.dutyTarget = (t==='本番') ? 10 : 1;
-  renderAdmin();
+  const labelEl = document.getElementById('newDutyLabel');
+  if(labelEl) labelEl.textContent = dutyLabel(t) + 'の必要人数';
+  const counterEl = document.getElementById('newDutyCounterVal');
+  if(counterEl) counterEl.textContent = newEventDraft.dutyTarget;
 }
 window.addMember = async function(){
   const name = document.getElementById('mName').value.trim();
@@ -1451,9 +1487,10 @@ window.addEvent = async function(){
   const title = document.getElementById('eTitle').value.trim();
   const location = getLocationValue('new');
   const deadline = document.getElementById('eDeadline').value;
+  const memo = document.getElementById('eMemo').value.trim();
   const type = document.getElementById('eType').value;
   if(!date || !title){ showToast('日時とタイトルを入力してください'); return; }
-  events.push({ id: uid('evt'), date, endTime, title, location, deadline, type, status:'募集中', dutyTarget: newEventDraft.dutyTarget, dutyGuardianIds: [], dutyBadges: {}, excludedMemberIds: [], surveyQuestions: [] });
+  events.push({ id: uid('evt'), date, endTime, title, location, deadline, memo, type, status:'募集中', dutyTarget: newEventDraft.dutyTarget, dutyGuardianIds: [], dutyBadges: {}, excludedMemberIds: [], surveyQuestions: [] });
   await saveEvents();
   newEventDraft = { dutyTarget: 1, type: '練習' };
   renderAdmin(); renderInput(); renderOverview();
