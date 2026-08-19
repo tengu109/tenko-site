@@ -9,7 +9,7 @@
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <style>
 :root{
-  --bg:#FFFFFF;
+  --bg:#FFFFF0;
   --lemon:#FFFF99;
   --lemon-deep:#4FADAD;
   --lemon-pale:#EAF7F7;
@@ -17,7 +17,7 @@
   --teal-deep:#005F5F;
   --card:#FFFFFF;
   --ink:#20291F;
-  --line:#E4E4E4;
+  --line:#E9E1D0;
   --coral:#E1543F;
   --amber:#D98A1E;
   --sky:#2F7FA8;
@@ -27,7 +27,7 @@
 *{box-sizing:border-box;}
 html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);font-family:'Verdana',sans-serif;-webkit-tap-highlight-color:transparent;}
 #app{max-width:520px;margin:0 auto;min-height:100vh;display:flex;flex-direction:column;background:var(--bg);}
-.topbar{background:var(--bg);color:var(--ink);padding:16px 18px 18px;position:relative;overflow:hidden;border-bottom:1px solid var(--line);}
+.topbar{background:#FFFFFF;color:var(--ink);padding:16px 18px 18px;position:relative;overflow:hidden;border-bottom:1px solid var(--line);}
 .topbar::after{content:"";position:absolute;right:-26px;top:-26px;width:100px;height:100px;border-radius:50%;background:var(--lemon);opacity:.35;z-index:0;}
 .brand-row{position:relative;z-index:1;}
 .brand-row{display:flex;align-items:center;justify-content:space-between;}
@@ -49,6 +49,7 @@ html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);font-family:'
 .segment .seg-btn.active{background:var(--teal);color:#fff;}
 .segment.sub{margin-bottom:14px;}
 .segment.sub .seg-btn{font-size:11.5px;padding:7px 2px;}
+.segment-hint{text-align:center;font-size:10.5px;color:#9A9384;margin:-8px 0 12px;}
 .card{background:var(--card);border-radius:var(--radius);padding:14px 16px;margin-bottom:12px;box-shadow:0 1px 2px rgba(32,41,31,.06);border:1px solid var(--line);}
 .card h3{margin:0 0 4px;font-size:15px;font-weight:700;}
 .event-date{font-family:'Roboto Mono',monospace;font-size:12px;color:var(--teal-deep);background:var(--lemon-pale);display:inline-block;padding:2px 8px;border-radius:6px;margin-bottom:6px;}
@@ -64,7 +65,7 @@ html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);font-family:'
 button{font-family:inherit;}
 .btn{border:none;border-radius:10px;padding:10px 16px;font-weight:700;cursor:pointer;font-size:14px;}
 .btn-primary{background:var(--teal);color:#fff;}
-.btn-ghost{background:transparent;border:1px solid var(--line);color:var(--ink);}
+.btn-ghost{background:#F3ECD9;border:1px solid var(--line);color:var(--ink);}
 .btn-block{width:100%;}
 .btn-sm{padding:6px 10px;font-size:12px;border-radius:8px;}
 .btn-danger{background:#FBE4DE;color:var(--coral);}
@@ -165,7 +166,7 @@ table.duty2 td.total-col{font-weight:700;background:var(--lemon-pale);}
       <div class="brand"><span class="dot"></span>TENKO！</div>
       <div class="mode-pill user" id="modePill" onclick="onModePillClick()">使用者モード</div>
     </div>
-    <div class="brand-sub">小天狗出欠調整サイト</div>
+    <div class="brand-sub">テンコ！小天狗出欠調整サイト</div>
   </div>
   <div class="tabs">
     <div class="tab active" data-tab="input"><span class="tab-icon">📋</span>出欠募集中</div>
@@ -212,6 +213,7 @@ let dutyAttendance = {}; // open duty-availability poll, ALL guardians can answe
 let dutyBadges = [];     // {code,label} extensible badge master list (未/兼 etc.)
 let surveyAnswers = {};  // { [eventId]: { [questionId]: { [memberId]: {status, note} } } } — free-form ◯✕△ polls (e.g. 現地集合/解散, 移動手段)
 let archivedFiscalYears = []; // [2024, 2025, ...] years locked to read-only
+let manualDutyAdjustments = {}; // { [fy]: { [type]: { [guardianId]: number } } } — 急遽の応援などイベントに紐づかない当番回数の手動調整
 let adminPasscode = '0000';
 let sitePasscode = '0000'; // サイト入場用パスコード（管理者パスコードとは別物）
 let isAdmin = false;
@@ -352,6 +354,7 @@ async function loadAll(){
   }
   archivedFiscalYears = await DataStore.get('archived_fiscal_years', []);
   surveyAnswers = await DataStore.get('survey_answers', {});
+  manualDutyAdjustments = await DataStore.get('manual_duty_adjustments', {});
   await maybeAdvanceGrades();
   renderAll();
 }
@@ -401,6 +404,7 @@ async function saveSitePasscode(){ await DataStore.set('site_passcode', sitePass
 async function saveDutyBadges(){ await DataStore.set('duty_badges', dutyBadges); }
 async function saveArchivedFiscalYears(){ await DataStore.set('archived_fiscal_years', archivedFiscalYears); }
 async function saveSurveyAnswers(){ await DataStore.set('survey_answers', surveyAnswers); }
+async function saveManualDutyAdjustments(){ await DataStore.set('manual_duty_adjustments', manualDutyAdjustments); }
 function showToast(msg){ const t=document.getElementById('toast'); t.textContent=msg; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),1600); }
 
 /* =========================================================
@@ -444,6 +448,12 @@ function unansweredFirstFor(ev){
   const active = activeMembersFor(ev);
   const unanswered = active.filter(m=>{ const st = statusOf(ev.id, m.id); return !st || !st.status; });
   const answered = active.filter(m=>{ const st = statusOf(ev.id, m.id); return st && st.status; });
+  return [...unanswered, ...answered];
+}
+function unansweredGuardiansFirstFor(ev){
+  const all = sortedGuardians();
+  const unanswered = all.filter(g=>{ const st = dutyStatusOf(ev.id, g.id); return !st || !st.status; });
+  const answered = all.filter(g=>{ const st = dutyStatusOf(ev.id, g.id); return st && st.status; });
   return [...unanswered, ...answered];
 }
 function fmtYearMonth(ym){
@@ -579,7 +589,8 @@ function renderInput(){
   let html = `<div class="segment">
     <div class="seg-btn ${uiState.inputType==='練習'?'active':''}" onclick="setInputType('練習')">練習</div>
     <div class="seg-btn ${uiState.inputType==='本番'?'active':''}" onclick="setInputType('本番')">本番</div>
-  </div>`;
+  </div>
+  <div class="segment-hint">▲タップで「練習／本番」を切り替え</div>`;
   const typeEvents = eventsOfTypeStatus(uiState.inputType, '募集中', false);
   if(typeEvents.length===0){
     html += `<div class="empty"><div class="big">📅</div>募集中の${uiState.inputType}予定はありません。<br>（過去の予定は翌日以降ここから消えます）</div>`;
@@ -649,8 +660,8 @@ function renderInput(){
   const allGuardians = sortedGuardians();
   if(allGuardians.length){
     html += `<div class="section-title">${dutyLabel(ev.type)}の出欠依頼（保護者の皆さんへ）</div>
-    <div class="muted" style="margin-bottom:8px;">対応できる方は ◯（対応可）✕（不可）△（保留）でお知らせください。担当者は管理者が確認のうえ決定します。</div>`;
-    allGuardians.forEach(g=>{
+    <div class="muted" style="margin-bottom:8px;">対応できる方は ◯（対応可）✕（不可）△（保留）でお知らせください。担当者は管理者が確認のうえ決定します。（未回答の方が上に表示されます）</div>`;
+    unansweredGuardiansFirstFor(ev).forEach(g=>{
       const dst = dutyStatusOf(ev.id, g.id);
       const pillClass = dst ? 'pill-'+dst.status : 'pill-未';
       const pillText = dst ? dst.status : '未回答';
@@ -872,7 +883,8 @@ function renderOverview(){
   let html = `<div class="segment">
     <div class="seg-btn ${uiState.overviewType==='練習'?'active':''}" onclick="setOverviewType('練習')">練習</div>
     <div class="seg-btn ${uiState.overviewType==='本番'?'active':''}" onclick="setOverviewType('本番')">本番</div>
-  </div>`;
+  </div>
+  <div class="segment-hint">▲タップで「練習／本番」を切り替え</div>`;
   const typeEvents = eventsOfTypeStatus(uiState.overviewType, '決定', false);
   if(typeEvents.length===0){
     html += `<div class="empty"><div class="big">📊</div>決定した${uiState.overviewType}予定はまだありません。<br>募集中のものは「出欠募集中」からご確認ください。</div>`;
@@ -1317,7 +1329,8 @@ function pastEventsHtml(){
   let html = `<div class="segment">
     <div class="seg-btn ${uiState.pastEventsType==='練習'?'active':''}" onclick="setPastEventsType('練習')">練習</div>
     <div class="seg-btn ${uiState.pastEventsType==='本番'?'active':''}" onclick="setPastEventsType('本番')">本番</div>
-  </div>`;
+  </div>
+  <div class="segment-hint">▲タップで「練習／本番」を切り替え</div>`;
   const pastEvents = [...events].filter(ev=>!isNotPast(ev.date) && ev.type===uiState.pastEventsType).sort((a,b)=> new Date(b.date)-new Date(a.date));
   html += `<div class="section-title">過去の${uiState.pastEventsType}一覧（新しい順）</div>`;
   if(pastEvents.length===0){
@@ -1644,7 +1657,8 @@ function dutyDashboardHtml(){
   let html = `<div class="segment">
     <div class="seg-btn ${uiState.dutyType==='練習'?'active':''}" onclick="setDutyType('練習')">練習（見守り当番）</div>
     <div class="seg-btn ${uiState.dutyType==='本番'?'active':''}" onclick="setDutyType('本番')">本番（付添保護者）</div>
-  </div>`;
+  </div>
+  <div class="segment-hint">▲タップで「練習／本番」を切り替え</div>`;
   const years = availableFiscalYears();
   if(years.length===0) return html + `<div class="empty"><div class="big">📭</div>イベントがまだ登録されていません。</div>`;
   if(uiState.dutyFY===null || !years.includes(uiState.dutyFY)) uiState.dutyFY = years[0];
@@ -1659,18 +1673,44 @@ function dutyDashboardHtml(){
     const idx = monthIndexInFY(ev.date);
     (ev.dutyGuardianIds||[]).forEach(gid=>{ if(matrix[gid]) matrix[gid][idx]++; });
   });
-  const totals = roster.map(g=> matrix[g.id].reduce((a,b)=>a+b,0));
+  const manualFor = (gid)=> ((manualDutyAdjustments[uiState.dutyFY]||{})[uiState.dutyType]||{})[gid] || 0;
+  const totals = roster.map(g=> matrix[g.id].reduce((a,b)=>a+b,0) + manualFor(g.id));
   const minTotal = totals.length ? Math.min(...totals) : 0;
   html += `<div class="duty-scroll"><table class="duty2">
     <thead><tr><th class="name-col">保護者名</th>${FY_MONTH_ORDER.map(m=>`<th>${m}月</th>`).join('')}<th>年度計</th></tr></thead><tbody>`;
   roster.forEach((g,i)=>{
     html += `<tr><td class="name-col">${escapeHtml(withSan(g.name))}</td>`;
     matrix[g.id].forEach(c=>{ html += `<td>${c||''}</td>`; });
-    html += `<td class="total-col ${totals[i]===minTotal?'duty-low':''}">${totals[i]}</td></tr>`;
+    const adj = manualFor(g.id);
+    html += `<td class="total-col ${totals[i]===minTotal?'duty-low':''}">${totals[i]}${adj?`<br><span style="font-size:9px;font-weight:400;">(手動+${adj})</span>`:''}</td></tr>`;
   });
   html += `</tbody></table></div>`;
   html += `<div class="muted">※「出欠募集中」ページで担当を決定するとここに反映されます。赤字は当該年度で回数が最も少ない保護者です。</div>`;
+
+  html += `<div class="section-title">手動調整（急遽の応援など、イベントに紐づかない回数を追加）</div>
+    <div class="card">
+      <div class="muted" style="margin-bottom:8px;">${uiState.dutyFY}年度・${dutyLabel(uiState.dutyType)}に対する手動追加分です。上の表の年度計に加算されます。</div>
+      ${roster.map(g=>{
+        const adj = manualFor(g.id);
+        return `<div class="list-item" style="cursor:default;">
+          <div>${escapeHtml(withSan(g.name))}</div>
+          <div class="counter-row" style="margin-bottom:0;">
+            <button class="counter-btn" onclick="adjustManualDuty(${uiState.dutyFY},'${uiState.dutyType}','${g.id}',-1)">－</button>
+            <div class="counter-val">${adj}</div>
+            <button class="counter-btn" onclick="adjustManualDuty(${uiState.dutyFY},'${uiState.dutyType}','${g.id}',1)">＋</button>
+          </div>
+        </div>`;
+      }).join('')}
+    </div>`;
   return html;
+}
+window.adjustManualDuty = async function(fy, type, guardianId, delta){
+  if(!manualDutyAdjustments[fy]) manualDutyAdjustments[fy] = {};
+  if(!manualDutyAdjustments[fy][type]) manualDutyAdjustments[fy][type] = {};
+  const cur = manualDutyAdjustments[fy][type][guardianId] || 0;
+  manualDutyAdjustments[fy][type][guardianId] = Math.max(0, cur + delta);
+  await saveManualDutyAdjustments();
+  renderAdmin();
 }
 window.setDutyType = function(t){ uiState.dutyType=t; renderAdmin(); }
 
