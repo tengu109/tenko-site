@@ -50,6 +50,12 @@ html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);font-family:'
 .segment.sub{margin-bottom:14px;}
 .segment.sub .seg-btn{font-size:11.5px;padding:7px 2px;}
 .segment-hint{text-align:center;font-size:10.5px;color:#9A9384;margin:-8px 0 12px;}
+.cal-nav{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;}
+.cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:3px;}
+.cal-weekday{text-align:center;font-size:10px;color:#9A9384;font-weight:700;padding-bottom:2px;}
+.cal-cell{aspect-ratio:1;border-radius:8px;display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:11px;color:#556;}
+.cal-cell.has-event{cursor:pointer;background:var(--lemon-pale);border:1px solid var(--line);font-weight:700;color:var(--ink);}
+.cal-dot{width:6px;height:6px;border-radius:50%;display:inline-block;}
 .card{background:var(--card);border-radius:var(--radius);padding:14px 16px;margin-bottom:12px;box-shadow:0 1px 2px rgba(32,41,31,.06);border:1px solid var(--line);}
 .card h3{margin:0 0 4px;font-size:15px;font-weight:700;}
 .event-date{font-family:'Roboto Mono',monospace;font-size:12px;color:var(--teal-deep);background:var(--lemon-pale);display:inline-block;padding:2px 8px;border-radius:6px;margin-bottom:6px;}
@@ -225,6 +231,7 @@ let uiState = {
   dutyType: '練習', dutyFY: null,
   adminSubTab: 'events', adminEditingEvent: null, adminEditingMember: null, adminEditingGuardian: null,
   fyManageYear: null,
+  overviewCalMonth: null,
   pastEventsType: '練習',
 };
 let newEventDraft = { dutyTarget: 1, type: '練習' };
@@ -913,9 +920,68 @@ window.copyLineText = async function(eventId){
     }
   }
 }
+function renderOverviewCalendarHtml(){
+  if(uiState.overviewCalMonth===null){
+    const now = new Date();
+    uiState.overviewCalMonth = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
+  }
+  const [y,m] = uiState.overviewCalMonth.split('-').map(Number);
+  const startOffset = new Date(y, m-1, 1).getDay();
+  const daysInMonth = new Date(y, m, 0).getDate();
+  const decided = events.filter(ev=>ev.status==='決定');
+  const eventsByDay = {};
+  decided.forEach(ev=>{
+    const d = new Date(ev.date);
+    if(d.getFullYear()===y && (d.getMonth()+1)===m){
+      const day = d.getDate();
+      if(!eventsByDay[day]) eventsByDay[day] = [];
+      eventsByDay[day].push(ev);
+    }
+  });
+  const todayStr = new Date();
+  const isThisMonth = (todayStr.getFullYear()===y && (todayStr.getMonth()+1)===m);
+
+  let cells = '';
+  for(let i=0;i<startOffset;i++) cells += `<div class="cal-cell"></div>`;
+  for(let day=1; day<=daysInMonth; day++){
+    const dayEvents = (eventsByDay[day]||[]).sort((a,b)=> new Date(a.date)-new Date(b.date));
+    const hasEvent = dayEvents.length>0;
+    const isToday = isThisMonth && todayStr.getDate()===day;
+    const dots = dayEvents.slice(0,3).map(ev=>`<span class="cal-dot" style="background:${ev.type==='練習'?'#1F6B63':'var(--coral)'};"></span>`).join('');
+    cells += `<div class="cal-cell ${hasEvent?'has-event':''}" style="${isToday?'box-shadow:0 0 0 2px var(--teal) inset;':''}" ${hasEvent?`onclick="selectFromCalendar('${dayEvents[0].id}','${dayEvents[0].type}')"`:''}>
+      <div>${day}</div>
+      <div style="display:flex;gap:2px;">${dots}</div>
+    </div>`;
+  }
+  const weekdayHeaders = ['日','月','火','水','木','金','土'].map(w=>`<div class="cal-weekday">${w}</div>`).join('');
+  return `<div class="card">
+    <div class="cal-nav">
+      <button class="btn btn-ghost btn-sm" onclick="shiftCalMonth(-1)">‹ 前月</button>
+      <div style="font-weight:700;">${y}年${m}月</div>
+      <button class="btn btn-ghost btn-sm" onclick="shiftCalMonth(1)">翌月 ›</button>
+    </div>
+    <div class="cal-grid">${weekdayHeaders}${cells}</div>
+    <div class="muted" style="margin-top:8px;font-size:11px;">
+      <span class="cal-dot" style="background:#1F6B63;"></span> 練習　
+      <span class="cal-dot" style="background:var(--coral);"></span> 本番　（日付タップでその予定を表示）
+    </div>
+  </div>`;
+}
+window.shiftCalMonth = function(delta){
+  const [y,m] = uiState.overviewCalMonth.split('-').map(Number);
+  const d = new Date(y, m-1+delta, 1);
+  uiState.overviewCalMonth = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+  renderOverview();
+}
+window.selectFromCalendar = function(eventId, type){
+  uiState.overviewType = type;
+  uiState.overviewSelectedEvent = eventId;
+  renderOverview();
+}
 function renderOverview(){
   const el = document.getElementById('screen-overview');
-  let html = `<div class="segment">
+  let html = renderOverviewCalendarHtml();
+  html += `<div class="segment">
     <div class="seg-btn ${uiState.overviewType==='練習'?'active':''}" onclick="setOverviewType('練習')">練習</div>
     <div class="seg-btn ${uiState.overviewType==='本番'?'active':''}" onclick="setOverviewType('本番')">本番</div>
   </div>
