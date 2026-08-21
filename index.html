@@ -54,11 +54,11 @@ html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);font-family:'
 .card h3{margin:0 0 4px;font-size:15px;font-weight:700;}
 .event-date{font-family:'Roboto Mono',monospace;font-size:12px;color:var(--teal-deep);background:var(--lemon-pale);display:inline-block;padding:2px 8px;border-radius:6px;margin-bottom:6px;}
 .event-type{font-size:11px;font-weight:700;padding:2px 8px;border-radius:6px;margin-left:6px;}
-.event-type.練習{background:#E1F0E0;color:#2E6B3B;}
+.event-type.練習{background:#DCEFEC;color:#1F6B63;}
 .event-type.本番{background:#FBE4DE;color:var(--coral);}
 .status-tag{font-size:11px;font-weight:700;padding:2px 8px;border-radius:6px;margin-left:6px;}
 .status-tag.募集中{background:var(--lemon);color:#7A6E1E;}
-.status-tag.決定{background:#E1F0E0;color:#2E6B3B;}
+.status-tag.決定{background:#DCEFEC;color:#1F6B63;}
 .muted{color:#7C8570;font-size:12px;}
 .empty{text-align:center;padding:40px 20px;color:#8A9384;}
 .empty .big{font-size:34px;margin-bottom:8px;}
@@ -76,7 +76,7 @@ button{font-family:inherit;}
 .member-name .honor{color:var(--amber);margin-right:2px;}
 .furigana{font-size:10.5px;color:#8C9384;display:block;}
 .status-pill{font-family:'Roboto Mono',monospace;font-weight:700;font-size:12px;padding:3px 10px;border-radius:20px;text-align:center;white-space:nowrap;}
-.pill-◯{background:#E1F0E0;color:#2E6B3B;}
+.pill-◯{background:#DCEFEC;color:#1F6B63;}
 .pill-✕{background:#FBE4DE;color:var(--coral);}
 .pill-遅{background:#FBF0DA;color:var(--amber);}
 .pill-早{background:#DEEBF3;color:var(--sky);}
@@ -84,14 +84,14 @@ button{font-family:inherit;}
 .pill-未{background:var(--lemon-pale);color:var(--teal-deep);border:1px dashed var(--lemon-deep);}
 .status-buttons{display:flex;gap:6px;margin-top:10px;flex-wrap:wrap;}
 .status-btn{flex:1;min-width:48px;border:2px solid var(--line);background:#fff;border-radius:10px;padding:8px 0;font-size:17px;font-weight:700;cursor:pointer;text-align:center;}
-.status-btn.sel-◯{border-color:#2E6B3B;background:#E1F0E0;}
+.status-btn.sel-◯{border-color:#1F6B63;background:#DCEFEC;}
 .status-btn.sel-✕{border-color:var(--coral);background:#FBE4DE;}
 .status-btn.sel-遅{border-color:var(--amber);background:#FBF0DA;}
 .status-btn.sel-早{border-color:var(--sky);background:#DEEBF3;}
 .status-btn.sel-△{border-color:#6D7568;background:#EDECE2;}
 .note-input{width:100%;margin-top:8px;padding:8px 10px;border-radius:8px;border:1px solid var(--line);font-size:13px;font-family:inherit;}
 .note-label{font-size:10.5px;color:#8A9384;margin:8px 0 2px;font-weight:700;}
-.scoreboard{background:var(--teal-deep);border-radius:16px;padding:18px 20px;color:#fff;margin-bottom:14px;position:relative;overflow:hidden;}
+.scoreboard{background:var(--teal);border-radius:16px;padding:18px 20px;color:#fff;margin-bottom:14px;position:relative;overflow:hidden;}
 .scoreboard::before{content:"";position:absolute;left:0;top:0;bottom:0;width:6px;background:var(--lemon);}
 .score-label{font-size:11px;letter-spacing:.1em;color:#D9F0F0;font-family:'Roboto Mono',monospace;}
 .score-num{font-family:'Roboto Mono',monospace;font-size:42px;font-weight:700;line-height:1.1;}
@@ -470,7 +470,10 @@ function guardianChildLabel(g){
 function sortedGuardians(){
   const order = sortedMembers().map(m=>m.id);
   const minOrder = g => Math.min(...guardianMemberIds(g).map(id=>{ const i = order.indexOf(id); return i<0 ? 9999 : i; }), 9999);
-  return [...guardians].sort((a,b)=> minOrder(a) - minOrder(b));
+  return [...guardians].filter(g=>!g.isGraduate).sort((a,b)=> minOrder(a) - minOrder(b));
+}
+function sortedGraduatedGuardians(){
+  return guardians.filter(g=>g.isGraduate).sort((a,b)=> (a.name||'').localeCompare(b.name||'', 'ja'));
 }
 function eventsOfTypeStatus(type, status, includePast){
   return events.filter(e=> (!type || e.type===type) && (!status || e.status===status) && (includePast || isNotPast(e.date)))
@@ -708,33 +711,39 @@ function renderStatusButtons(ev, memberId, st, source){
   const cur = st ? st.status : null;
   const note = st ? (st.note||'') : '';
   const symbols = ['◯','✕','遅','早','△'];
-  let btns = symbols.map(s=>`<button class="status-btn ${cur===s?'sel-'+s:''}" onclick="event.stopPropagation();setStatus('${ev.id}','${memberId}','${s}','${source}')">${s}</button>`).join('');
+  const boxId = `statusBox_${ev.id}_${memberId}_${source}`;
+  let btns = symbols.map(s=>`<button class="status-btn ${cur===s?'sel-'+s:''}" onclick="event.stopPropagation();stageSelect(this,'${s}')">${s}</button>`).join('');
   const notePlaceholder = ev.type==='本番' ? '例：出演と兼任／未就学児の付き添いあり' : '例：18:30到着予定';
-  let out = `<div class="status-buttons">${btns}</div>
+  let out = `<div class="status-buttons" id="${boxId}" data-selected="${cur||''}">${btns}</div>
     ${cur ? `<div class="muted" style="margin-top:4px;cursor:pointer;color:var(--teal-deep);text-decoration:underline;" onclick="event.stopPropagation();resetStatus('${ev.id}','${memberId}','${source}')">↺ 未回答に戻す</div>` : ''}
     <div class="note-label">メモ（連絡事項など）</div>
-    <input class="note-input" type="text" autocomplete="off" data-lpignore="true" placeholder="${notePlaceholder}" value="${escapeHtml(note)}" onclick="event.stopPropagation()" oninput="setNote('${ev.id}','${memberId}',this.value)">`;
+    <input class="note-input" type="text" autocomplete="off" data-lpignore="true" placeholder="${notePlaceholder}" value="${escapeHtml(note)}" onclick="event.stopPropagation()" oninput="setNote('${ev.id}','${memberId}',this.value)">
+    <button class="btn btn-primary btn-block" style="margin-top:8px;" onclick="event.stopPropagation();confirmStatus('${boxId}','${ev.id}','${memberId}','${source}')">✅ 決定</button>`;
   return out;
 }
 function renderDutyStatusButtons(eventId, guardianId, dst){
   const cur = dst ? dst.status : null;
   const note = dst ? (dst.note||'') : '';
   const symbols = ['◯','✕','△'];
-  let btns = symbols.map(s=>`<button class="status-btn ${cur===s?'sel-'+s:''}" onclick="event.stopPropagation();setDutyStatus('${eventId}','${guardianId}','${s}')">${s}</button>`).join('');
-  return `<div class="status-buttons">${btns}</div>
+  const boxId = `dutyBox_${eventId}_${guardianId}`;
+  let btns = symbols.map(s=>`<button class="status-btn ${cur===s?'sel-'+s:''}" onclick="event.stopPropagation();stageSelect(this,'${s}')">${s}</button>`).join('');
+  return `<div class="status-buttons" id="${boxId}" data-selected="${cur||''}">${btns}</div>
     ${cur ? `<div class="muted" style="margin-top:4px;cursor:pointer;color:var(--teal-deep);text-decoration:underline;" onclick="event.stopPropagation();resetDutyStatus('${eventId}','${guardianId}')">↺ 未回答に戻す</div>` : ''}
     <div class="note-label">メモ（連絡事項など）</div>
-    <input class="note-input" type="text" autocomplete="off" data-lpignore="true" placeholder="例：18時から遅れて合流します" value="${escapeHtml(note)}" onclick="event.stopPropagation()" oninput="setDutyNote('${eventId}','${guardianId}',this.value)">`;
+    <input class="note-input" type="text" autocomplete="off" data-lpignore="true" placeholder="例：18時から遅れて合流します" value="${escapeHtml(note)}" onclick="event.stopPropagation()" oninput="setDutyNote('${eventId}','${guardianId}',this.value)">
+    <button class="btn btn-primary btn-block" style="margin-top:8px;" onclick="event.stopPropagation();confirmDutyStatus('${boxId}','${eventId}','${guardianId}')">✅ 決定</button>`;
 }
 function renderSurveyAnswerButtons(eventId, questionId, memberId, ans){
   const cur = ans ? ans.status : null;
   const note = ans ? (ans.note||'') : '';
   const symbols = ['◯','✕','△'];
-  let btns = symbols.map(s=>`<button class="status-btn ${cur===s?'sel-'+s:''}" onclick="event.stopPropagation();setSurveyAnswer('${eventId}','${questionId}','${memberId}','${s}')">${s}</button>`).join('');
-  return `<div class="status-buttons">${btns}</div>
+  const boxId = `surveyBox_${eventId}_${questionId}_${memberId}`;
+  let btns = symbols.map(s=>`<button class="status-btn ${cur===s?'sel-'+s:''}" onclick="event.stopPropagation();stageSelect(this,'${s}')">${s}</button>`).join('');
+  return `<div class="status-buttons" id="${boxId}" data-selected="${cur||''}">${btns}</div>
     ${cur ? `<div class="muted" style="margin-top:4px;cursor:pointer;color:var(--teal-deep);text-decoration:underline;" onclick="event.stopPropagation();resetSurveyAnswer('${eventId}','${questionId}','${memberId}')">↺ 未回答に戻す</div>` : ''}
     <div class="note-label">メモ（連絡事項など）</div>
-    <input class="note-input" type="text" autocomplete="off" data-lpignore="true" placeholder="例：自転車で来ます" value="${escapeHtml(note)}" onclick="event.stopPropagation()" oninput="setSurveyNote('${eventId}','${questionId}','${memberId}',this.value)">`;
+    <input class="note-input" type="text" autocomplete="off" data-lpignore="true" placeholder="例：自転車で来ます" value="${escapeHtml(note)}" onclick="event.stopPropagation()" oninput="setSurveyNote('${eventId}','${questionId}','${memberId}',this.value)">
+    <button class="btn btn-primary btn-block" style="margin-top:8px;" onclick="event.stopPropagation();confirmSurveyAnswer('${boxId}','${eventId}','${questionId}','${memberId}')">✅ 決定</button>`;
 }
 window.toggleSurveyExpand = function(key){ uiState.inputExpandedSurvey = (uiState.inputExpandedSurvey===key)?null:key; renderInput(); }
 window.setSurveyAnswer = async function(eventId, questionId, memberId, status){
@@ -761,6 +770,32 @@ window.selectInputEvent = function(id){ uiState.inputSelectedEvent = id; uiState
 window.backToEventList = function(){ uiState.inputSelectedEvent = null; renderInput(); }
 window.toggleMemberExpand = function(memberId){ uiState.inputExpandedMember = (uiState.inputExpandedMember===memberId)?null:memberId; uiState.inputExpandedGuardian=null; renderInput(); }
 window.toggleGuardianExpand = function(guardianId){ uiState.inputExpandedGuardian = (uiState.inputExpandedGuardian===guardianId)?null:guardianId; uiState.inputExpandedMember=null; renderInput(); }
+window.stageSelect = function(btnEl, symbol){
+  const container = btnEl.parentElement;
+  container.querySelectorAll('.status-btn').forEach(b=>{
+    ['sel-◯','sel-✕','sel-遅','sel-早','sel-△'].forEach(c=>b.classList.remove(c));
+  });
+  btnEl.classList.add('sel-'+symbol);
+  container.setAttribute('data-selected', symbol);
+}
+window.confirmStatus = function(boxId, eventId, memberId, source){
+  const box = document.getElementById(boxId);
+  const symbol = box ? box.getAttribute('data-selected') : '';
+  if(!symbol){ showToast('◯✕遅早△のいずれかを選んでください'); return; }
+  setStatus(eventId, memberId, symbol, source);
+}
+window.confirmDutyStatus = function(boxId, eventId, guardianId){
+  const box = document.getElementById(boxId);
+  const symbol = box ? box.getAttribute('data-selected') : '';
+  if(!symbol){ showToast('◯✕△のいずれかを選んでください'); return; }
+  setDutyStatus(eventId, guardianId, symbol);
+}
+window.confirmSurveyAnswer = function(boxId, eventId, questionId, memberId){
+  const box = document.getElementById(boxId);
+  const symbol = box ? box.getAttribute('data-selected') : '';
+  if(!symbol){ showToast('◯✕△のいずれかを選んでください'); return; }
+  setSurveyAnswer(eventId, questionId, memberId, symbol);
+}
 window.setStatus = async function(eventId, memberId, status, source){
   if(!attendance[eventId]) attendance[eventId] = {};
   const prev = attendance[eventId][memberId] || {};
@@ -1159,6 +1194,22 @@ function adminGuardiansHtml(){
     });
     html += `</div>`;
   }
+  const graduatedGuardians = sortedGraduatedGuardians();
+  if(graduatedGuardians.length){
+    html += `<div class="section-title">卒業した保護者欄</div>`;
+    html += `<div class="card">`;
+    graduatedGuardians.forEach(g=>{
+      const isEditing = uiState.adminEditingGuardian===g.id;
+      html += `<div class="list-item graduate-item" onclick="toggleEditGuardian('${g.id}')" style="flex-direction:column;align-items:stretch;">
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+          <div><b class="graduate-name">${escapeHtml(withSan(g.name))}</b><br><span class="muted">卒業　${escapeHtml(guardianChildLabel(g))}</span></div>
+          <button onclick="event.stopPropagation();confirmAndDelete('保護者『${escapeHtml(g.name)}』を完全に削除しますか？この操作は取り消せません。', function(){ deleteGuardian('${g.id}'); })" style="color:var(--coral);background:none;border:none;cursor:pointer;font-size:16px;">✕</button>
+        </div>
+        ${isEditing ? renderGuardianEditPanel(g) : ''}
+      </div>`;
+    });
+    html += `</div>`;
+  }
   return html;
 }
 function renderGuardianEditPanel(g){
@@ -1168,8 +1219,19 @@ function renderGuardianEditPanel(g){
     <div class="field"><label>お子さん（複数選択可）</label>
       <div class="chip-list" id="editGuardianChips_${g.id}">${sortedMembers().map(m=>`<div class="chip ${ids.includes(m.id)?'sel':''}" data-id="${m.id}" onclick="toggleEditGuardianChip(this)">${plainDisplayName(m)}</div>`).join('')}</div>
     </div>
+    <div class="field"><label>在籍状況（卒業にすると出欠・お当番の対象から外れます）</label>
+      <button class="btn btn-sm ${!g.isGraduate?'btn-primary':'btn-ghost'}" onclick="toggleGuardianGraduate('${g.id}')" style="margin-right:6px;">現役</button>
+      <button class="btn btn-sm ${g.isGraduate?'btn-primary':'btn-ghost'}" onclick="toggleGuardianGraduate('${g.id}')">卒業</button>
+    </div>
     <button class="btn btn-primary btn-block" onclick="saveGuardianEdit('${g.id}')">保存する</button>
   </div>`;
+}
+window.toggleGuardianGraduate = async function(id){
+  const g = guardians.find(x=>x.id===id);
+  g.isGraduate = !g.isGraduate;
+  await saveGuardians();
+  renderAdmin(); renderInput(); renderOverview();
+  showToast(g.isGraduate ? '卒業扱いにしました' : '現役に戻しました');
 }
 window.toggleNewGuardianChip = function(memberId, chipEl){
   const idx = newGuardianDraft.memberIds.indexOf(memberId);
