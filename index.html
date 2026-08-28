@@ -66,10 +66,19 @@ html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);font-family:'
 .status-tag.募集中{background:var(--lemon);color:#7A6E1E;}
 .status-tag.決定{background:#DCEFEC;color:#1F6B63;}
 .muted{color:#7C8570;font-size:12px;}
+.info-line{color:var(--ink);font-size:14.5px;font-weight:600;line-height:1.7;}
+.info-line .icon{margin-right:2px;}
 .empty{text-align:center;padding:40px 20px;color:#8A9384;}
 .empty .big{font-size:34px;margin-bottom:8px;}
 button{font-family:inherit;}
-.btn{border:none;border-radius:10px;padding:10px 16px;font-weight:700;cursor:pointer;font-size:14px;}
+.btn{border:none;border-radius:10px;padding:10px 16px;font-weight:700;cursor:pointer;font-size:14px;transition:transform .08s ease, filter .08s ease;}
+.btn:active{transform:scale(0.96);filter:brightness(0.9);}
+.status-btn{transition:transform .08s ease;}
+.status-btn:active{transform:scale(0.9);}
+.counter-btn:active{transform:scale(0.88);filter:brightness(0.9);}
+.chip{transition:transform .08s ease;}
+.chip:active{transform:scale(0.94);}
+.badge-toggle:active{transform:scale(0.92);}
 .btn-primary{background:var(--teal);color:#fff;}
 .btn-ghost{background:#F3ECD9;border:1px solid var(--line);color:var(--ink);}
 .btn-block{width:100%;}
@@ -232,6 +241,7 @@ let uiState = {
   adminSubTab: 'events', adminEditingEvent: null, adminEditingMember: null, adminEditingGuardian: null,
   fyManageYear: null,
   overviewCalMonth: null,
+  overviewExpandedGuardian: null,
   pastEventsType: '練習',
 };
 let newEventDraft = { dutyTarget: 1, type: '練習' };
@@ -242,6 +252,17 @@ function withSan(name){ return name ? name + 'さん' : ''; }
 function guardianBadgesFor(ev, guardianId){ return (ev.dutyBadges && ev.dutyBadges[guardianId]) || []; }
 function badgeTagsHtml(codes){ return codes.map(c=>`<span class="badge-tag">${escapeHtml(c)}</span>`).join(''); }
 function guardianNameWithBadgesHtml(ev, g){ return escapeHtml(withSan(g.name)) + badgeTagsHtml(guardianBadgesFor(ev, g.id)); }
+function dutyDecidedListHtml(ev, decidedGuardians){
+  if(!decidedGuardians.length) return `<div class="muted">未定</div>`;
+  return decidedGuardians.map(g=>{
+    const dst = dutyStatusOf(ev.id, g.id);
+    const noteBit = (dst && dst.note) ? `<div class="muted" style="font-size:11.5px;margin:0 0 4px 2px;">${escapeHtml(dst.note)}</div>` : '';
+    const expanded = uiState.overviewExpandedGuardian===g.id;
+    return `<div class="info-line" style="cursor:pointer;margin-bottom:${(noteBit&&!expanded)?'0':'2px'};" onclick="toggleOverviewGuardianExpand('${g.id}')">・${guardianNameWithBadgesHtml(ev,g)} <span style="font-size:11px;color:var(--teal-deep);text-decoration:underline;">✎編集</span></div>
+    ${expanded ? `<div style="margin:2px 0 10px 10px;">${renderDutyStatusButtons(ev.id, g.id, dst)}</div>` : noteBit}`;
+  }).join('');
+}
+window.toggleOverviewGuardianExpand = function(guardianId){ uiState.overviewExpandedGuardian = (uiState.overviewExpandedGuardian===guardianId)?null:guardianId; renderCurrentDutyScreen(); }
 function isNotPast(dateStr){
   const d = new Date(dateStr); if(isNaN(d)) return true;
   const today = new Date();
@@ -627,10 +648,11 @@ function renderInput(){
     <div class="card">
       <span class="event-date">${fmtEventWhen(ev)}</span><span class="event-type ${ev.type}">${ev.type}</span><span class="status-tag ${ev.status}">${ev.status}</span>
       <h3>${escapeHtml(ev.title)}</h3>
-      <div class="muted">📍 ${escapeHtml(ev.location||'未設定')}</div>
-      ${ev.deadline?`<div class="muted" style="color:var(--coral);font-weight:700;">⏰ 回答期限：${fmtDeadline(ev.deadline)}まで（期限後も変更は可能です）</div>`:''}
-      ${ev.memo?`<div class="muted" style="margin-top:4px;">📝 ${escapeHtml(ev.memo)}</div>`:''}
-      <div class="muted">🎽 ${dutyLabel(ev.type)}：${decidedGuardians.length ? decidedGuardians.map(g=>guardianNameWithBadgesHtml(ev,g)).join('、') : '未定'}（${decidedGuardians.length}/${ev.dutyTarget||0}人決定）</div>
+      <div class="info-line"><span class="icon">📍</span>${escapeHtml(ev.location||'未設定')}</div>
+      ${ev.deadline?`<div class="info-line" style="color:var(--coral);">⏰ 回答期限：${fmtDeadline(ev.deadline)}まで（期限後も変更は可能です）</div>`:''}
+      ${ev.memo?`<div class="info-line">📝 ${escapeHtml(ev.memo)}</div>`:''}
+      <div class="info-line" style="margin-top:6px;">🎽 ${dutyLabel(ev.type)}（${decidedGuardians.length}/${ev.dutyTarget||0}人決定）</div>
+      ${dutyDecidedListHtml(ev, decidedGuardians)}
     </div>
     <div class="section-title">名前を選んで出欠を入力（未回答の方が上に表示されます）</div>`;
   unansweredFirstFor(ev).forEach(mem=>{
@@ -677,10 +699,11 @@ function renderInput(){
       const pillText = dst ? dst.status : '未回答';
       const expanded = uiState.inputExpandedGuardian===g.id;
       const decided = (ev.dutyGuardianIds||[]).includes(g.id);
+      const noteBit = (dst && dst.note) ? `<div class="muted" style="font-size:11.5px;">${escapeHtml(dst.note)}</div>` : '';
       html += `
       <div class="roster-row" style="${decided?'border-color:var(--teal);':''}">
         <div class="roster-top" onclick="toggleGuardianExpand('${g.id}')">
-          <div><span class="member-name">${escapeHtml(withSan(g.name))}${decided?' ✅担当':''}</span><span class="furigana">${escapeHtml(guardianChildLabel(g))}</span></div>
+          <div><span class="member-name">${escapeHtml(withSan(g.name))}${decided?' ✅担当':''}</span>${noteBit}<span class="furigana">${escapeHtml(guardianChildLabel(g))}</span></div>
           <div class="status-pill ${pillClass}">${pillText}</div>
         </div>
         ${expanded ? renderDutyStatusButtons(ev.id, g.id, dst) : ''}
@@ -833,11 +856,11 @@ window.setDutyStatus = async function(eventId, guardianId, status){
   if(!dutyAttendance[eventId]) dutyAttendance[eventId] = {};
   const prev = dutyAttendance[eventId][guardianId] || {};
   dutyAttendance[eventId][guardianId] = { status, note: prev.note||'' };
-  await saveDutyAttendance(); renderInput(); showToast('お当番の出欠を更新しました');
+  await saveDutyAttendance(); renderCurrentDutyScreen(); showToast('お当番の出欠を更新しました');
 }
 window.resetDutyStatus = async function(eventId, guardianId){
   if(dutyAttendance[eventId]) delete dutyAttendance[eventId][guardianId];
-  await saveDutyAttendance(); renderInput(); showToast('未回答に戻しました');
+  await saveDutyAttendance(); renderCurrentDutyScreen(); showToast('未回答に戻しました');
 }
 window.setDutyNote = async function(eventId, guardianId, note){
   if(!dutyAttendance[eventId]) dutyAttendance[eventId] = {};
@@ -1012,9 +1035,10 @@ function renderOverview(){
   html += `<div class="card">
     <span class="event-date">${fmtEventWhen(ev)}</span><span class="event-type ${ev.type}">${ev.type}</span>
     <h3>${escapeHtml(ev.title)}</h3>
-    <div class="muted">📍 ${escapeHtml(ev.location||'未設定')}</div>
-    ${ev.memo?`<div class="muted">📝 ${escapeHtml(ev.memo)}</div>`:''}
-    <div class="muted">🎽 ${dutyLabel(ev.type)}：${decidedGuardians.length ? decidedGuardians.map(g=>guardianNameWithBadgesHtml(ev,g)).join('、') : '未定'}</div>
+    <div class="info-line"><span class="icon">📍</span>${escapeHtml(ev.location||'未設定')}</div>
+    ${ev.memo?`<div class="info-line">📝 ${escapeHtml(ev.memo)}</div>`:''}
+    <div class="info-line" style="margin-top:6px;">🎽 ${dutyLabel(ev.type)}</div>
+    ${dutyDecidedListHtml(ev, decidedGuardians)}
   </div>`;
   html += `
     <div class="scoreboard">
