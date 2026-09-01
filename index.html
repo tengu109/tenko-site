@@ -242,6 +242,7 @@ let uiState = {
   fyManageYear: null,
   overviewCalMonth: null,
   overviewExpandedGuardian: null,
+  adminEditingLocation: null,
   pastEventsType: '練習',
 };
 let newEventDraft = { dutyTarget: 1, type: '練習' };
@@ -520,6 +521,17 @@ function shiftYearInDateTimeLocal(dateStr, yearsDelta){
 }
 function monthIndexInFY(dateStr){ const d = new Date(dateStr); const m = d.getMonth()+1; return (m>=4) ? m-4 : m+8; }
 const FY_MONTH_ORDER = [4,5,6,7,8,9,10,11,12,1,2,3];
+function mapUrlForLocation(locationName){
+  if(!locationName) return null;
+  const loc = locations.find(l=>l.name===locationName);
+  if(loc && loc.mapUrl) return loc.mapUrl;
+  return 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(locationName);
+}
+function mapLinkHtml(locationName){
+  const url = mapUrlForLocation(locationName);
+  if(!url) return '';
+  return ` <a href="${escapeHtml(url)}" target="_blank" rel="noopener" onclick="event.stopPropagation()" style="font-size:11px;color:var(--teal-deep);text-decoration:underline;white-space:nowrap;">🗺️地図で見る</a>`;
+}
 function locationFieldHtml(idSuffix, currentValue){
   const match = currentValue ? locations.find(l=>l.name===currentValue) : null;
   const isOtherActive = !!currentValue && !match;
@@ -634,7 +646,7 @@ function renderInput(){
       <div class="card" style="cursor:pointer" onclick="selectInputEvent('${ev.id}')">
         <span class="event-date">${fmtEventWhen(ev)}</span><span class="event-type ${ev.type}">${ev.type}</span><span class="status-tag ${ev.status}">${ev.status}</span>
         <h3>${escapeHtml(ev.title)}</h3>
-        <div class="muted">📍 ${escapeHtml(ev.location||'未設定')}</div>
+        <div class="muted">📍 ${escapeHtml(ev.location||'未設定')}${ev.location?mapLinkHtml(ev.location):''}</div>
         ${ev.deadline?`<div class="muted" style="color:var(--coral);font-weight:700;">⏰ 回答期限：${fmtDeadline(ev.deadline)}まで</div>`:''}
         <div class="muted">${unanswered.length ? `未回答：${unanswered.map(m=>plainDisplayName(m)).join('、')}` : '✅ 全員回答済みです'}</div>
       </div>`;
@@ -648,9 +660,9 @@ function renderInput(){
     <div class="card">
       <span class="event-date">${fmtEventWhen(ev)}</span><span class="event-type ${ev.type}">${ev.type}</span><span class="status-tag ${ev.status}">${ev.status}</span>
       <h3>${escapeHtml(ev.title)}</h3>
-      <div class="info-line"><span class="icon">📍</span>${escapeHtml(ev.location||'未設定')}</div>
+      <div class="info-line"><span class="icon">📍</span>${escapeHtml(ev.location||'未設定')}${ev.location?mapLinkHtml(ev.location):''}</div>
       ${ev.deadline?`<div class="info-line" style="color:var(--coral);">⏰ 回答期限：${fmtDeadline(ev.deadline)}まで（期限後も変更は可能です）</div>`:''}
-      ${ev.memo?`<div class="info-line">📝 ${escapeHtml(ev.memo)}</div>`:''}
+      ${ev.memo?`<div class="info-line" style="white-space:pre-wrap;">📝 ${escapeHtml(ev.memo)}</div>`:''}
       <div class="info-line" style="margin-top:6px;">🎽 ${dutyLabel(ev.type)}（${decidedGuardians.length}/${ev.dutyTarget||0}人決定）</div>
       ${dutyDecidedListHtml(ev, decidedGuardians)}
     </div>
@@ -892,6 +904,10 @@ window.toggleDutyBadgeOverview = window.toggleDutyBadge;
 /* =========================================================
    出欠調整 (決定した予定の結果を閲覧／お当番出欠依頼欄は自動で非表示)
 ========================================================= */
+function fmtTodayVersion(){
+  const d = new Date();
+  return `${d.getMonth()+1}/${d.getDate()}`;
+}
 function buildLineShareText(ev){
   const attending = [], absent = [], hold = [], noResponse = [];
   activeMembersFor(ev).forEach(mem=>{
@@ -902,12 +918,24 @@ function buildLineShareText(ev){
     else if(st.status==='△'){ hold.push(mem); }
   });
   const decidedGuardians = (ev.dutyGuardianIds||[]).map(id=>guardians.find(g=>g.id===id)).filter(Boolean);
-  const dutyNames = decidedGuardians.length ? decidedGuardians.map(g=>withSan(g.name)).join('、') : '未定';
 
   const lines = [];
+  lines.push(`（${fmtTodayVersion()}版）`);
   lines.push(`■ ${fmtEventWhen(ev)} ${ev.title}`);
   lines.push(`場所：${ev.location||'未設定'}`);
-  lines.push(`${dutyLabel(ev.type)}：${dutyNames}`);
+  if(ev.memo) lines.push(`メモ：${ev.memo}`);
+  lines.push(`${dutyLabel(ev.type)}：`);
+  if(decidedGuardians.length===0){
+    lines.push('未定');
+  }else{
+    decidedGuardians.forEach(g=>{
+      const codes = guardianBadgesFor(ev, g.id);
+      const dst = dutyStatusOf(ev.id, g.id);
+      const extras = [...codes];
+      if(dst && dst.note) extras.push(dst.note);
+      lines.push(`・${withSan(g.name)}${extras.length?`（${extras.join('・')}）`:''}`);
+    });
+  }
   lines.push('');
   lines.push(`【出席者（${attending.length}名）】`);
   if(attending.length===0) lines.push('なし');
@@ -1035,8 +1063,8 @@ function renderOverview(){
   html += `<div class="card">
     <span class="event-date">${fmtEventWhen(ev)}</span><span class="event-type ${ev.type}">${ev.type}</span>
     <h3>${escapeHtml(ev.title)}</h3>
-    <div class="info-line"><span class="icon">📍</span>${escapeHtml(ev.location||'未設定')}</div>
-    ${ev.memo?`<div class="info-line">📝 ${escapeHtml(ev.memo)}</div>`:''}
+    <div class="info-line"><span class="icon">📍</span>${escapeHtml(ev.location||'未設定')}${ev.location?mapLinkHtml(ev.location):''}</div>
+    ${ev.memo?`<div class="info-line" style="white-space:pre-wrap;">📝 ${escapeHtml(ev.memo)}</div>`:''}
     <div class="info-line" style="margin-top:6px;">🎽 ${dutyLabel(ev.type)}</div>
     ${dutyDecidedListHtml(ev, decidedGuardians)}
   </div>`;
@@ -1379,25 +1407,46 @@ function adminLocationsHtml(){
   let html = `<div class="section-title">場所リスト管理（あらかじめ登録しておくとプルダウンで選べます）</div>
     <div class="card">
       <div class="field"><label>場所を追加</label><input id="newLocationName" placeholder="例：座・高円寺　阿波踊りホール"></div>
+      <div class="field"><label>Googleマップのリンク（任意）</label><input id="newLocationMapUrl" placeholder="例：https://maps.app.goo.gl/..."></div>
+      <div class="muted" style="margin-bottom:8px;">未入力の場合は場所名で自動検索したGoogleマップにリンクします。</div>
       <button class="btn btn-primary btn-block" onclick="addLocation()">＋ 場所を追加</button>
     </div>`;
   if(locations.length){
     html += `<div class="card">`;
     locations.forEach(l=>{
-      html += `<div class="list-item" style="cursor:default;">
-        <div>📍 ${escapeHtml(l.name)}</div>
-        <button onclick="confirmAndDelete('場所『${escapeHtml(l.name)}』を削除しますか？', function(){ deleteLocation('${l.id}'); })" style="color:var(--coral);background:none;border:none;cursor:pointer;font-size:16px;">✕</button>
+      const isEditing = uiState.adminEditingLocation===l.id;
+      html += `<div class="list-item" onclick="toggleEditLocation('${l.id}')" style="flex-direction:column;align-items:stretch;">
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+          <div>📍 ${escapeHtml(l.name)}${l.mapUrl?' <span class="muted">🗺️リンク設定済み</span>':''}</div>
+          <button onclick="event.stopPropagation();confirmAndDelete('場所『${escapeHtml(l.name)}』を削除しますか？', function(){ deleteLocation('${l.id}'); })" style="color:var(--coral);background:none;border:none;cursor:pointer;font-size:16px;">✕</button>
+        </div>
+        ${isEditing ? `<div class="edit-panel" onclick="event.stopPropagation()">
+          <div class="field"><label>場所名</label><input id="editLocName_${l.id}" value="${escapeHtml(l.name)}"></div>
+          <div class="field"><label>Googleマップのリンク（任意）</label><input id="editLocMapUrl_${l.id}" value="${escapeHtml(l.mapUrl||'')}" placeholder="例：https://maps.app.goo.gl/..."></div>
+          <button class="btn btn-primary btn-block" onclick="saveLocationEdit('${l.id}')">保存する</button>
+        </div>` : ''}
       </div>`;
     });
     html += `</div>`;
   }
   return html;
 }
+window.toggleEditLocation = function(id){ uiState.adminEditingLocation = (uiState.adminEditingLocation===id)?null:id; renderAdmin(); }
+window.saveLocationEdit = async function(id){
+  const l = locations.find(x=>x.id===id);
+  l.name = document.getElementById('editLocName_'+id).value.trim();
+  l.mapUrl = document.getElementById('editLocMapUrl_'+id).value.trim();
+  await saveLocations();
+  uiState.adminEditingLocation = null;
+  renderAdmin(); renderInput(); renderOverview();
+  showToast('場所情報を更新しました');
+}
 window.addLocation = async function(){
   const name = document.getElementById('newLocationName').value.trim();
+  const mapUrl = document.getElementById('newLocationMapUrl').value.trim();
   if(!name){ showToast('場所名を入力してください'); return; }
   if(locations.some(l=>l.name===name)){ showToast('すでに登録されています'); return; }
-  locations.push({ id: uid('loc'), name });
+  locations.push({ id: uid('loc'), name, mapUrl });
   await saveLocations();
   renderAdmin();
   showToast('場所を追加しました');
