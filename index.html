@@ -752,6 +752,7 @@ function renderStatusButtons(ev, memberId, st, source){
   source = source || 'input';
   const cur = st ? st.status : null;
   const note = st ? (st.note||'') : '';
+  const majorDate = st ? (st.majorChangeDate||'') : '';
   const symbols = ['◯','✕','遅','早','△'];
   const boxId = `statusBox_${ev.id}_${memberId}_${source}`;
   let btns = symbols.map(s=>`<button class="status-btn ${cur===s?'sel-'+s:''}" onclick="event.stopPropagation();stageSelect(this,'${s}')">${s}</button>`).join('');
@@ -759,8 +760,12 @@ function renderStatusButtons(ev, memberId, st, source){
   let out = `<div class="status-buttons" id="${boxId}" data-selected="${cur||''}">${btns}</div>
     ${cur ? `<div class="muted" style="margin-top:4px;cursor:pointer;color:var(--teal-deep);text-decoration:underline;" onclick="event.stopPropagation();resetStatus('${ev.id}','${memberId}','${source}')">↺ 未回答に戻す</div>` : ''}
     <div class="note-label">メモ（連絡事項など）</div>
-    <input class="note-input" type="text" autocomplete="off" data-lpignore="true" placeholder="${notePlaceholder}" value="${escapeHtml(note)}" onclick="event.stopPropagation()" oninput="setNote('${ev.id}','${memberId}',this.value)">
-    <button class="btn btn-primary btn-block" style="margin-top:8px;" onclick="event.stopPropagation();confirmStatus('${boxId}','${ev.id}','${memberId}','${source}')">✅ 決定</button>`;
+    <input class="note-input" type="text" autocomplete="off" data-lpignore="true" placeholder="${notePlaceholder}" value="${escapeHtml(note)}" onclick="event.stopPropagation()" oninput="setNote('${ev.id}','${memberId}',this.value)">`;
+  if(ev.type==='本番'){
+    out += `<div class="note-label">大きく出欠が変わった日付（任意。微差な変更では入力不要です）</div>
+    <input class="note-input" type="date" value="${escapeHtml(majorDate)}" onclick="event.stopPropagation()" oninput="setMajorChangeDate('${ev.id}','${memberId}',this.value)">`;
+  }
+  out += `<button class="btn btn-primary btn-block" style="margin-top:8px;" onclick="event.stopPropagation();confirmStatus('${boxId}','${ev.id}','${memberId}','${source}')">✅ 決定</button>`;
   return out;
 }
 function renderDutyStatusButtons(eventId, guardianId, dst){
@@ -841,7 +846,7 @@ window.confirmSurveyAnswer = function(boxId, eventId, questionId, memberId){
 window.setStatus = async function(eventId, memberId, status, source){
   if(!attendance[eventId]) attendance[eventId] = {};
   const prev = attendance[eventId][memberId] || {};
-  attendance[eventId][memberId] = { status, note: prev.note||'', guardianNote: prev.guardianNote||'' };
+  attendance[eventId][memberId] = { status, note: prev.note||'', guardianNote: prev.guardianNote||'', majorChangeDate: prev.majorChangeDate||'' };
   await saveAttendance();
   if(source==='overview') renderOverview(); else renderInput();
   showToast('出欠を更新しました');
@@ -856,6 +861,12 @@ window.setNote = async function(eventId, memberId, note){
   if(!attendance[eventId]) attendance[eventId] = {};
   if(!attendance[eventId][memberId]) attendance[eventId][memberId] = {status:null, note:'', guardianNote:''};
   attendance[eventId][memberId].note = note;
+  await saveAttendance();
+}
+window.setMajorChangeDate = async function(eventId, memberId, dateStr){
+  if(!attendance[eventId]) attendance[eventId] = {};
+  if(!attendance[eventId][memberId]) attendance[eventId][memberId] = {status:null, note:'', guardianNote:''};
+  attendance[eventId][memberId].majorChangeDate = dateStr;
   await saveAttendance();
 }
 window.setGuardianNote = async function(eventId, memberId, note){
@@ -1094,6 +1105,7 @@ function renderOverview(){
     const noteBits = [];
     if(st && st.note) noteBits.push(escapeHtml(st.note));
     if(st && st.guardianNote) noteBits.push('保護者欄：'+escapeHtml(st.guardianNote));
+    if(st && st.majorChangeDate) noteBits.push('📅変更日：'+fmtDeadline(st.majorChangeDate));
     return `<div class="roster-row">
       <div class="roster-top" onclick="toggleOverviewExpand('${mem.id}')">
         <div><span class="member-name">${numberPrefix||''}${displayName(mem)}</span>${noteBits.length?`<div class="muted">${noteBits.join(' ／ ')}</div>`:''}</div>
@@ -1911,27 +1923,4 @@ function dutyDashboardHtml(){
           <div class="counter-row" style="margin-bottom:0;">
             <button class="counter-btn" onclick="adjustManualDuty(${uiState.dutyFY},'${uiState.dutyType}','${g.id}',-1)">－</button>
             <div class="counter-val">${adj}</div>
-            <button class="counter-btn" onclick="adjustManualDuty(${uiState.dutyFY},'${uiState.dutyType}','${g.id}',1)">＋</button>
-          </div>
-        </div>`;
-      }).join('')}
-    </div>`;
-  return html;
-}
-window.adjustManualDuty = async function(fy, type, guardianId, delta){
-  if(!manualDutyAdjustments[fy]) manualDutyAdjustments[fy] = {};
-  if(!manualDutyAdjustments[fy][type]) manualDutyAdjustments[fy][type] = {};
-  const cur = manualDutyAdjustments[fy][type][guardianId] || 0;
-  manualDutyAdjustments[fy][type][guardianId] = Math.max(0, cur + delta);
-  await saveManualDutyAdjustments();
-  renderAdmin();
-}
-window.setDutyType = function(t){ uiState.dutyType=t; renderAdmin(); }
-
-/* =========================================================
-   INIT
-   （loadAll() はサイト入場パスコード通過後、submitSitePasscode() から呼ばれます）
-========================================================= */
-</script>
-</body>
-</html>
+            <button class="counter-btn" onclick="adjustManualDuty(${uiState.dutyFY},'${uiState.dutyType}','${g.i
