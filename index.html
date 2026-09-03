@@ -1037,6 +1037,19 @@ function renderOverview(){
     <div class="seg-btn ${uiState.overviewType==='本番'?'active':''}" onclick="setOverviewType('本番')">本番</div>
   </div>
   <div class="segment-hint">▲タップで「練習／本番」を切り替え</div>`;
+  if(uiState.overviewType==='練習'){
+    html += `<div class="card" style="background:var(--lemon-pale);border-color:var(--lemon-deep);">
+      <div class="section-title" style="margin:0 0 6px;">利用方法</div>
+      <div class="info-line">・練習開始時間までテンコで出欠変更可能です。</div>
+      <div class="info-line">・練習開始時間以降はLINEでお知らせください。</div>
+    </div>`;
+  }else{
+    html += `<div class="card" style="background:var(--lemon-pale);border-color:var(--lemon-deep);">
+      <div class="section-title" style="margin:0 0 6px;">利用方法</div>
+      <div class="info-line">・出欠の変更はテンコ修正後にお世話役まで個別にも連絡ください。</div>
+      <div class="info-line">・その他微差の変更はテンコ修正のみで大丈夫です。</div>
+    </div>`;
+  }
   const typeEvents = eventsOfTypeStatus(uiState.overviewType, '決定', false);
   if(typeEvents.length===0){
     html += `<div class="empty"><div class="big">📊</div>決定した${uiState.overviewType}予定はまだありません。<br>募集中のものは「出欠募集中」からご確認ください。</div>`;
