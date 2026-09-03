@@ -1923,4 +1923,27 @@ function dutyDashboardHtml(){
           <div class="counter-row" style="margin-bottom:0;">
             <button class="counter-btn" onclick="adjustManualDuty(${uiState.dutyFY},'${uiState.dutyType}','${g.id}',-1)">－</button>
             <div class="counter-val">${adj}</div>
-            <button class="counter-btn" onclick="adjustManualDuty(${uiState.dutyFY},'${uiState.dutyType}','${g.i
+            <button class="counter-btn" onclick="adjustManualDuty(${uiState.dutyFY},'${uiState.dutyType}','${g.id}',1)">＋</button>
+          </div>
+        </div>`;
+      }).join('')}
+    </div>`;
+  return html;
+}
+window.adjustManualDuty = async function(fy, type, guardianId, delta){
+  if(!manualDutyAdjustments[fy]) manualDutyAdjustments[fy] = {};
+  if(!manualDutyAdjustments[fy][type]) manualDutyAdjustments[fy][type] = {};
+  const cur = manualDutyAdjustments[fy][type][guardianId] || 0;
+  manualDutyAdjustments[fy][type][guardianId] = Math.max(0, cur + delta);
+  await saveManualDutyAdjustments();
+  renderAdmin();
+}
+window.setDutyType = function(t){ uiState.dutyType=t; renderAdmin(); }
+
+/* =========================================================
+   INIT
+   （loadAll() はサイト入場パスコード通過後、submitSitePasscode() から呼ばれます）
+========================================================= */
+</script>
+</body>
+</html>
