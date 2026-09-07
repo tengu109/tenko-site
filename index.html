@@ -672,10 +672,14 @@ function renderInput(){
     const pillClass = st ? 'pill-'+st.status : 'pill-未';
     const pillText = st ? st.status : '未回答';
     const expanded = uiState.inputExpandedMember===mem.id;
+    const noteBits = [];
+    if(st && st.note) noteBits.push(escapeHtml(st.note));
+    if(st && st.guardianNote) noteBits.push('保護者欄：'+escapeHtml(st.guardianNote));
+    const noteBit = noteBits.length ? `<div class="muted" style="font-size:11.5px;">${noteBits.join(' ／ ')}</div>` : '';
     html += `
     <div class="roster-row">
       <div class="roster-top" onclick="toggleMemberExpand('${mem.id}')">
-        <div><span class="member-name">${displayName(mem)}</span><span class="furigana">${escapeHtml(mem.furigana||'')}</span></div>
+        <div><span class="member-name">${displayName(mem)}</span>${noteBit}<span class="furigana">${escapeHtml(mem.furigana||'')}</span></div>
         <div class="status-pill ${pillClass}">${pillText}</div>
       </div>
       ${expanded ? renderStatusButtons(ev, mem.id, st) : ''}
