@@ -923,13 +923,21 @@ function fmtTodayVersion(){
   const d = new Date();
   return `${d.getMonth()+1}/${d.getDate()}`;
 }
+function changeAnnotation(st, requireDate){
+  if(!st) return '';
+  if(requireDate && !st.majorChangeDate) return '';
+  const parts = [];
+  if(st.note) parts.push(st.note);
+  if(st.majorChangeDate) parts.push(fmtDeadline(st.majorChangeDate)+'変更');
+  return parts.length ? `（${parts.join('。')}）` : '';
+}
 function buildLineShareText(ev){
   const attending = [], absent = [], hold = [], noResponse = [];
   activeMembersFor(ev).forEach(mem=>{
     const st = statusOf(ev.id, mem.id);
     if(!st || !st.status){ noResponse.push(mem); return; }
-    if(st.status==='◯' || st.status==='遅' || st.status==='早'){ attending.push({mem, note: st.note||''}); }
-    else if(st.status==='✕'){ absent.push(mem); }
+    if(st.status==='◯' || st.status==='遅' || st.status==='早'){ attending.push({mem, st}); }
+    else if(st.status==='✕'){ absent.push({mem, st}); }
     else if(st.status==='△'){ hold.push(mem); }
   });
   const decidedGuardians = (ev.dutyGuardianIds||[]).map(id=>guardians.find(g=>g.id===id)).filter(Boolean);
@@ -954,10 +962,10 @@ function buildLineShareText(ev){
   lines.push('');
   lines.push(`【出席者（${attending.length}名）】`);
   if(attending.length===0) lines.push('なし');
-  attending.forEach((a,i)=>{ lines.push(`${i+1}. ${plainDisplayName(a.mem)}${a.note?`（${a.note}）`:''}`); });
+  attending.forEach((a,i)=>{ lines.push(`${i+1}. ${plainDisplayName(a.mem)}${changeAnnotation(a.st, false)}`); });
   lines.push('');
   lines.push(`【欠席者（${absent.length}名）】`);
-  if(absent.length===0) lines.push('・なし'); else absent.forEach(m=>lines.push(`・${plainDisplayName(m)}`));
+  if(absent.length===0) lines.push('・なし'); else absent.forEach(a=>lines.push(`・${plainDisplayName(a.mem)}${changeAnnotation(a.st, true)}`));
   lines.push('');
   lines.push(`【保留（${hold.length}名）】`);
   if(hold.length===0) lines.push('・なし'); else hold.forEach(m=>lines.push(`・${plainDisplayName(m)}`));
