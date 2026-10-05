@@ -760,7 +760,7 @@ function renderStatusButtons(ev, memberId, st, source){
   const symbols = ['◯','✕','遅','早','△'];
   const boxId = `statusBox_${ev.id}_${memberId}_${source}`;
   let btns = symbols.map(s=>`<button class="status-btn ${cur===s?'sel-'+s:''}" onclick="event.stopPropagation();stageSelect(this,'${s}')">${s}</button>`).join('');
-  const notePlaceholder = ev.type==='本番' ? '例：出演と兼任／未就学児の付き添いあり' : '例：18:30到着予定';
+  const notePlaceholder = ev.type==='本番' ? '例：18:30到着予定／体調不良で途中退場' : '例：18:30到着予定';
   let out = `<div class="status-buttons" id="${boxId}" data-selected="${cur||''}">${btns}</div>
     ${cur ? `<div class="muted" style="margin-top:4px;cursor:pointer;color:var(--teal-deep);text-decoration:underline;" onclick="event.stopPropagation();resetStatus('${ev.id}','${memberId}','${source}')">↺ 未回答に戻す</div>` : ''}
     <div class="note-label">メモ（連絡事項など）</div>
@@ -781,7 +781,7 @@ function renderDutyStatusButtons(eventId, guardianId, dst){
   return `<div class="status-buttons" id="${boxId}" data-selected="${cur||''}">${btns}</div>
     ${cur ? `<div class="muted" style="margin-top:4px;cursor:pointer;color:var(--teal-deep);text-decoration:underline;" onclick="event.stopPropagation();resetDutyStatus('${eventId}','${guardianId}')">↺ 未回答に戻す</div>` : ''}
     <div class="note-label">メモ（連絡事項など）</div>
-    <input class="note-input" type="text" autocomplete="off" data-lpignore="true" placeholder="例：18時から遅れて合流します" value="${escapeHtml(note)}" onclick="event.stopPropagation()" oninput="setDutyNote('${eventId}','${guardianId}',this.value)">
+    <input class="note-input" type="text" autocomplete="off" data-lpignore="true" placeholder="例：出演と兼任／未就学児の付き添いあり" value="${escapeHtml(note)}" onclick="event.stopPropagation()" oninput="setDutyNote('${eventId}','${guardianId}',this.value)">
     <button class="btn btn-primary btn-block" style="margin-top:8px;" onclick="event.stopPropagation();confirmDutyStatus('${boxId}','${eventId}','${guardianId}')">✅ 決定</button>`;
 }
 function renderSurveyAnswerButtons(eventId, questionId, memberId, ans){
