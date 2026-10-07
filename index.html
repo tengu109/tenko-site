@@ -249,6 +249,7 @@ let newEventDraft = { dutyTarget: 1, type: '練習' };
 
 function uid(prefix){ return prefix + '_' + Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
 function dutyLabel(type){ return type==='練習' ? '見守り当番' : '付添保護者'; }
+function typeLabel(t){ return t==='本番' ? '出演' : t; }
 function withSan(name){ return name ? name + 'さん' : ''; }
 function guardianBadgesFor(ev, guardianId){ return (ev.dutyBadges && ev.dutyBadges[guardianId]) || []; }
 function badgeTagsHtml(codes){ return codes.map(c=>`<span class="badge-tag">${escapeHtml(c)}</span>`).join(''); }
@@ -631,12 +632,12 @@ function renderInput(){
   const el = document.getElementById('screen-input');
   let html = `<div class="segment">
     <div class="seg-btn ${uiState.inputType==='練習'?'active':''}" onclick="setInputType('練習')">練習</div>
-    <div class="seg-btn ${uiState.inputType==='本番'?'active':''}" onclick="setInputType('本番')">本番</div>
+    <div class="seg-btn ${uiState.inputType==='本番'?'active':''}" onclick="setInputType('本番')">出演</div>
   </div>
-  <div class="segment-hint">▲タップで「練習／本番」を切り替え</div>`;
+  <div class="segment-hint">▲タップで「練習／出演」を切り替え</div>`;
   const typeEvents = eventsOfTypeStatus(uiState.inputType, '募集中', false);
   if(typeEvents.length===0){
-    html += `<div class="empty"><div class="big">📅</div>募集中の${uiState.inputType}予定はありません。<br>（過去の予定は翌日以降ここから消えます）</div>`;
+    html += `<div class="empty"><div class="big">📅</div>募集中の${typeLabel(uiState.inputType)}予定はありません。<br>（過去の予定は翌日以降ここから消えます）</div>`;
     el.innerHTML = html; return;
   }
   if(!uiState.inputSelectedEvent || !typeEvents.find(e=>e.id===uiState.inputSelectedEvent)){
@@ -644,7 +645,7 @@ function renderInput(){
       const unanswered = activeMembersFor(ev).filter(m=>{ const st = statusOf(ev.id, m.id); return !st || !st.status; });
       html += `
       <div class="card" style="cursor:pointer" onclick="selectInputEvent('${ev.id}')">
-        <span class="event-date">${fmtEventWhen(ev)}</span><span class="event-type ${ev.type}">${ev.type}</span><span class="status-tag ${ev.status}">${ev.status}</span>
+        <span class="event-date">${fmtEventWhen(ev)}</span><span class="event-type ${ev.type}">${typeLabel(ev.type)}</span><span class="status-tag ${ev.status}">${ev.status}</span>
         <h3>${escapeHtml(ev.title)}</h3>
         <div class="muted">📍 ${escapeHtml(ev.location||'未設定')}${ev.location?mapLinkHtml(ev.location):''}</div>
         ${ev.deadline?`<div class="muted" style="color:var(--coral);font-weight:700;">⏰ 回答期限：${fmtDeadline(ev.deadline)}まで</div>`:''}
@@ -658,7 +659,7 @@ function renderInput(){
   html += `
     <div class="btn btn-ghost btn-sm" onclick="backToEventList()" style="margin-bottom:12px;">← イベント一覧</div>
     <div class="card">
-      <span class="event-date">${fmtEventWhen(ev)}</span><span class="event-type ${ev.type}">${ev.type}</span><span class="status-tag ${ev.status}">${ev.status}</span>
+      <span class="event-date">${fmtEventWhen(ev)}</span><span class="event-type ${ev.type}">${typeLabel(ev.type)}</span><span class="status-tag ${ev.status}">${ev.status}</span>
       <h3>${escapeHtml(ev.title)}</h3>
       <div class="info-line"><span class="icon">📍</span>${escapeHtml(ev.location||'未設定')}${ev.location?mapLinkHtml(ev.location):''}</div>
       ${ev.deadline?`<div class="info-line" style="color:var(--coral);">⏰ 回答期限：${fmtDeadline(ev.deadline)}まで（期限後も変更は可能です）</div>`:''}
@@ -1037,7 +1038,7 @@ function renderOverviewCalendarHtml(){
     <div class="cal-grid">${weekdayHeaders}${cells}</div>
     <div class="muted" style="margin-top:8px;font-size:11px;">
       <span class="cal-dot" style="background:#1F6B63;"></span> 練習　
-      <span class="cal-dot" style="background:var(--coral);"></span> 本番　（日付タップでその予定を表示）
+      <span class="cal-dot" style="background:var(--coral);"></span> 出演　（日付タップでその予定を表示）
     </div>
   </div>`;
 }
@@ -1057,9 +1058,9 @@ function renderOverview(){
   let html = renderOverviewCalendarHtml();
   html += `<div class="segment">
     <div class="seg-btn ${uiState.overviewType==='練習'?'active':''}" onclick="setOverviewType('練習')">練習</div>
-    <div class="seg-btn ${uiState.overviewType==='本番'?'active':''}" onclick="setOverviewType('本番')">本番</div>
+    <div class="seg-btn ${uiState.overviewType==='本番'?'active':''}" onclick="setOverviewType('本番')">出演</div>
   </div>
-  <div class="segment-hint">▲タップで「練習／本番」を切り替え</div>`;
+  <div class="segment-hint">▲タップで「練習／出演」を切り替え</div>`;
   if(uiState.overviewType==='練習'){
     html += `<div class="card" style="background:var(--lemon-pale);border-color:var(--lemon-deep);">
       <div class="section-title" style="margin:0 0 6px;">利用方法</div>
@@ -1075,7 +1076,7 @@ function renderOverview(){
   }
   const typeEvents = eventsOfTypeStatus(uiState.overviewType, '決定', false);
   if(typeEvents.length===0){
-    html += `<div class="empty"><div class="big">📊</div>決定した${uiState.overviewType}予定はまだありません。<br>募集中のものは「出欠募集中」からご確認ください。</div>`;
+    html += `<div class="empty"><div class="big">📊</div>決定した${typeLabel(uiState.overviewType)}予定はまだありません。<br>募集中のものは「出欠募集中」からご確認ください。</div>`;
     el.innerHTML = html; return;
   }
   if(!uiState.overviewSelectedEvent || !typeEvents.find(e=>e.id===uiState.overviewSelectedEvent)){
@@ -1097,7 +1098,7 @@ function renderOverview(){
   html += `<div class="select-hint"><span class="arrow">▼</span>ここをタップして他の予定に切り替え</div>`;
   html += `<select class="event-select" onchange="uiState.overviewSelectedEvent=this.value; renderOverview()">${evOptions}</select>`;
   html += `<div class="card">
-    <span class="event-date">${fmtEventWhen(ev)}</span><span class="event-type ${ev.type}">${ev.type}</span>
+    <span class="event-date">${fmtEventWhen(ev)}</span><span class="event-type ${ev.type}">${typeLabel(ev.type)}</span>
     <h3>${escapeHtml(ev.title)}</h3>
     <div class="info-line"><span class="icon">📍</span>${escapeHtml(ev.location||'未設定')}${ev.location?mapLinkHtml(ev.location):''}</div>
     ${ev.memo?`<div class="info-line" style="white-space:pre-wrap;">📝 ${escapeHtml(ev.memo)}</div>`:''}
@@ -1499,7 +1500,7 @@ function adminEventsHtml(){
     <div class="card">
       <div class="field"><label>種別</label><select id="eType" onchange="setNewEventType(this.value)">
         <option value="練習" ${newEventDraft.type!=='本番'?'selected':''}>練習</option>
-        <option value="本番" ${newEventDraft.type==='本番'?'selected':''}>本番</option>
+        <option value="本番" ${newEventDraft.type==='本番'?'selected':''}>出演</option>
       </select></div>
       <div class="field"><label>日付・開始時間</label><input id="eDate" type="datetime-local"></div>
       <div class="field"><label>終了時間</label><input id="eEndTime" type="time"></div>
@@ -1526,13 +1527,13 @@ function adminEventsHtml(){
       const fyLocked = isPastOrArchivedFY(fiscalYearOf(ev.date));
       if(fyLocked){
         html += `<div class="list-item" style="flex-direction:column;align-items:stretch;opacity:.55;cursor:default;">
-          <div><span class="event-date">${fmtEventWhen(ev)}</span><span class="event-type ${ev.type}">${ev.type}</span><span class="status-tag ${ev.status}">${ev.status}</span><br><b>${escapeHtml(ev.title)}</b><br><span class="muted">📍${escapeHtml(ev.location||'未設定')} ／ 🔒 閲覧専用（年度確定済み）</span></div>
+          <div><span class="event-date">${fmtEventWhen(ev)}</span><span class="event-type ${ev.type}">${typeLabel(ev.type)}</span><span class="status-tag ${ev.status}">${ev.status}</span><br><b>${escapeHtml(ev.title)}</b><br><span class="muted">📍${escapeHtml(ev.location||'未設定')} ／ 🔒 閲覧専用（年度確定済み）</span></div>
         </div>`;
         return;
       }
       html += `<div class="list-item" onclick="toggleEditEvent('${ev.id}')" style="flex-direction:column;align-items:stretch;">
         <div style="display:flex;justify-content:space-between;align-items:center;">
-          <div><span class="event-date">${fmtEventWhen(ev)}</span><span class="event-type ${ev.type}">${ev.type}</span><span class="status-tag ${ev.status}">${ev.status}</span><br><b>${escapeHtml(ev.title)}</b><br><span class="muted">📍${escapeHtml(ev.location||'未設定')} ／ ${dutyLabel(ev.type)} ${assigned.length}/${ev.dutyTarget||0}人</span></div>
+          <div><span class="event-date">${fmtEventWhen(ev)}</span><span class="event-type ${ev.type}">${typeLabel(ev.type)}</span><span class="status-tag ${ev.status}">${ev.status}</span><br><b>${escapeHtml(ev.title)}</b><br><span class="muted">📍${escapeHtml(ev.location||'未設定')} ／ ${dutyLabel(ev.type)} ${assigned.length}/${ev.dutyTarget||0}人</span></div>
           <button onclick="event.stopPropagation();confirmAndDelete('イベント『${escapeHtml(ev.title)}』を削除しますか？出欠データも削除されます。', function(){ deleteEvent('${ev.id}'); })" style="color:var(--coral);background:none;border:none;cursor:pointer;font-size:16px;">✕</button>
         </div>
         ${isEditing ? renderEventEditPanel(ev) : ''}
@@ -1566,13 +1567,13 @@ function pastEventDetailHtml(ev){
 function pastEventsHtml(){
   let html = `<div class="segment">
     <div class="seg-btn ${uiState.pastEventsType==='練習'?'active':''}" onclick="setPastEventsType('練習')">練習</div>
-    <div class="seg-btn ${uiState.pastEventsType==='本番'?'active':''}" onclick="setPastEventsType('本番')">本番</div>
+    <div class="seg-btn ${uiState.pastEventsType==='本番'?'active':''}" onclick="setPastEventsType('本番')">出演</div>
   </div>
-  <div class="segment-hint">▲タップで「練習／本番」を切り替え</div>`;
+  <div class="segment-hint">▲タップで「練習／出演」を切り替え</div>`;
   const pastEvents = [...events].filter(ev=>!isNotPast(ev.date) && ev.type===uiState.pastEventsType).sort((a,b)=> new Date(b.date)-new Date(a.date));
-  html += `<div class="section-title">過去の${uiState.pastEventsType}一覧（新しい順）</div>`;
+  html += `<div class="section-title">過去の${typeLabel(uiState.pastEventsType)}一覧（新しい順）</div>`;
   if(pastEvents.length===0){
-    return html + `<div class="empty"><div class="big">📁</div>過去の${uiState.pastEventsType}はまだありません。</div>`;
+    return html + `<div class="empty"><div class="big">📁</div>過去の${typeLabel(uiState.pastEventsType)}はまだありません。</div>`;
   }
   html += `<div class="muted" style="margin-bottom:8px;">終了した予定はここにまとまります。タップで詳細を確認できます。</div>`;
   html += `<div class="card">`;
@@ -1581,7 +1582,7 @@ function pastEventsHtml(){
     const isEditing = uiState.adminEditingEvent===ev.id;
     html += `<div class="list-item" onclick="toggleEditEvent('${ev.id}')" style="flex-direction:column;align-items:stretch;">
       <div style="display:flex;justify-content:space-between;align-items:center;">
-        <div><span class="event-date">${fmtEventWhen(ev)}</span><span class="event-type ${ev.type}">${ev.type}</span><span class="status-tag ${ev.status}">${ev.status}</span>${fyLocked?' <span class="muted">🔒年度確定済み</span>':''}<br><b>${escapeHtml(ev.title)}</b><br><span class="muted">📍${escapeHtml(ev.location||'未設定')}</span></div>
+        <div><span class="event-date">${fmtEventWhen(ev)}</span><span class="event-type ${ev.type}">${typeLabel(ev.type)}</span><span class="status-tag ${ev.status}">${ev.status}</span>${fyLocked?' <span class="muted">🔒年度確定済み</span>':''}<br><b>${escapeHtml(ev.title)}</b><br><span class="muted">📍${escapeHtml(ev.location||'未設定')}</span></div>
         <button onclick="event.stopPropagation();confirmAndDelete('イベント『${escapeHtml(ev.title)}』を削除しますか？出欠データも削除されます。', function(){ deleteEvent('${ev.id}'); })" style="color:var(--coral);background:none;border:none;cursor:pointer;font-size:16px;">✕</button>
       </div>
       ${isEditing ? (fyLocked ? pastEventDetailHtml(ev) : renderEventEditPanel(ev)) : ''}
@@ -1894,9 +1895,9 @@ function dutyDashboardHtml(){
   if(guardians.length===0) return `<div class="empty"><div class="big">🎽</div>保護者を登録すると<br>お当番集計が表示されます。</div>`;
   let html = `<div class="segment">
     <div class="seg-btn ${uiState.dutyType==='練習'?'active':''}" onclick="setDutyType('練習')">練習（見守り当番）</div>
-    <div class="seg-btn ${uiState.dutyType==='本番'?'active':''}" onclick="setDutyType('本番')">本番（付添保護者）</div>
+    <div class="seg-btn ${uiState.dutyType==='本番'?'active':''}" onclick="setDutyType('本番')">出演（付添保護者）</div>
   </div>
-  <div class="segment-hint">▲タップで「練習／本番」を切り替え</div>`;
+  <div class="segment-hint">▲タップで「練習／出演」を切り替え</div>`;
   const years = availableFiscalYears();
   if(years.length===0) return html + `<div class="empty"><div class="big">📭</div>イベントがまだ登録されていません。</div>`;
   if(uiState.dutyFY===null || !years.includes(uiState.dutyFY)) uiState.dutyFY = years[0];
@@ -1952,10 +1953,4 @@ window.adjustManualDuty = async function(fy, type, guardianId, delta){
 }
 window.setDutyType = function(t){ uiState.dutyType=t; renderAdmin(); }
 
-/* =========================================================
-   INIT
-   （loadAll() はサイト入場パスコード通過後、submitSitePasscode() から呼ばれます）
-========================================================= */
-</script>
-</body>
-</html>
+/* =================================================
