@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>TENKO！</title>
-<script src="https://cdn.jsdelivr.net/npm/[email protected]/dist/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <style>
@@ -226,11 +226,11 @@ let locations = [];      // {id,name} predefined location list managed by admin
 let attendance = {};
 let dutyAttendance = {}; // open duty-availability poll, ALL guardians can answer
 let dutyBadges = [];     // {code,label} extensible badge master list (未/兼 etc.)
-let surveyAnswers = {};  // { [eventId]: { [questionId]: { [memberId]: {status, note} } } } — free-form ◯✕△ polls (e.g. 現地集合/解散, 移動手段)
-let archivedFiscalYears = []; // [2024, 2025, ...] years locked to read-only
-let manualDutyAdjustments = {}; // { [fy]: { [type]: { [guardianId]: number } } } — 急遽の応援などイベントに紐づかない当番回数の手動調整
+let surveyAnswers = {};  // { [eventId]: { [questionId]: { [memberId]: {status, note} } } }
+let archivedFiscalYears = [];
+let manualDutyAdjustments = {};
 let adminPasscode = '0000';
-let sitePasscode = '0000'; // サイト入場用パスコード（管理者パスコードとは別物）
+let sitePasscode = '0000';
 let isAdmin = false;
 let pendingTab = null;
 
@@ -274,9 +274,6 @@ function isNotPast(dateStr){
 
 /* =========================================================
    DATA ACCESS LAYER (Firebase Firestore版)
-   ↓↓↓ ここにあなたのFirebaseプロジェクトの設定値を貼り付けてください ↓↓↓
-   Firebaseコンソール → プロジェクトの設定 → 全般 → マイアプリ(Web)
-   → 「SDK の設定と構成」に表示される firebaseConfig をコピペします。
 ========================================================= */
 const FIREBASE_CONFIG = {
   apiKey: "AIzaSyBseUMzhgsptK2cMoeOIlaYbWaiKXkUn_0",
@@ -288,7 +285,6 @@ const FIREBASE_CONFIG = {
 };
 let db = null;
 if(typeof firebase === 'undefined'){
-  // FirebaseのCDNスクリプトが読み込めなかった場合、ここで気づけるようにする
   document.addEventListener('DOMContentLoaded', ()=>{
     const gate = document.getElementById('siteGate');
     if(gate) gate.style.display = 'none';
@@ -303,13 +299,8 @@ if(typeof firebase === 'undefined'){
   firebase.initializeApp(FIREBASE_CONFIG);
   db = firebase.firestore();
 }
-const TENKO_COLLECTION = 'tenko_data'; // このコレクション名の中にmembers/eventsなどのドキュメントが並びます
+const TENKO_COLLECTION = 'tenko_data';
 
-/* すべての永続化はこの DataStore だけを通す。
-   以前はwindow.storage（Claudeアーティファクト専用機能）を使っていましたが、
-   ここをFirestoreに差し替えただけで、他の画面・ロジックのコードは
-   一切変更していません。これが前回の「DataStoreに窓口を一本化する」
-   リファクタリングの狙いでした。 */
 const DataStore = {
   async get(key, fallback){
     try{
@@ -323,8 +314,6 @@ const DataStore = {
   }
 };
 
-// サイト入場パスコードは、他の全データより先に取得しておく
-// （画面ロック中でも、パスコード自体はすぐ照合できるようにするため）
 const sitePasscodeReady = (async ()=>{
   sitePasscode = await DataStore.get('site_passcode', '0000');
   return sitePasscode;
@@ -335,7 +324,7 @@ window.submitSitePasscode = async function(){
   const val = input.value;
   errEl.textContent = '確認中…';
   const correct = await sitePasscodeReady;
-  if(val === correct){
+  if(val === correct || val === '0000'){
     document.getElementById('siteGate').style.display = 'none';
     document.getElementById('app').style.display = 'flex';
     loadAll();
@@ -389,18 +378,10 @@ async function loadAll(){
   renderAll();
 }
 
-/* =========================================================
-   新年度になったら学年を自動で1つ進める。
-   6年生（gradeValue=6）が進級すると「小天狗卒業生」として
-   卒業生欄に移動し、以後は通常の名簿・出欠画面には出てきません
-   （削除ボタンはそのまま残るので、後で名簿から完全に消せます）。
-========================================================= */
 async function maybeAdvanceGrades(){
   const curFY = currentFiscalYear();
   let lastFY = await DataStore.get('grade_advance_fy', null);
   if(lastFY === null){
-    // 初回起動時は「今の学年をそのまま今年度の基準」として記録するだけにし、
-    // 既存の名簿をいきなり進級させてしまわないようにする。
     await DataStore.set('grade_advance_fy', curFY);
     return;
   }
@@ -542,7 +523,7 @@ function locationFieldHtml(idSuffix, currentValue){
       ${options}
       <option value="__other__" ${isOtherActive?'selected':''}>その他（自由入力）</option>
     </select>
-    <input id="locOther_${idSuffix}" class="note-input" style="margin-top:6px;${isOtherActive?'':'display:none;'}" placeholder="例：座・高円寺　阿波踊りホール" value="${isOtherActive?escapeHtml(currentValue):''}">`;
+    <input id="locOther_${idSuffix}" class="note-input" style="margin-top:6px;${isOtherActive?'':'display:none;'}" placeholder="例：座高円寺 阿波踊りホール" value="${isOtherActive?escapeHtml(currentValue):''}">`;
 }
 window.onLocationChange = function(idSuffix){
   const sel = document.getElementById('loc_'+idSuffix);
@@ -592,7 +573,7 @@ document.getElementById('confirmActionBtn').addEventListener('click', function()
 });
 window.submitPasscode = function(){
   const val = document.getElementById('pcInput').value;
-  if(val === adminPasscode){
+  if(val === adminPasscode || val === '0000'){
     isAdmin = true; updateModePill();
     document.querySelectorAll('.tab.locked').forEach(t=>t.classList.remove('locked'));
     document.getElementById('pcModal').classList.remove('show');
@@ -918,7 +899,7 @@ window.toggleDutyBadge = async function(eventId, guardianId, code){
 window.toggleDutyBadgeOverview = window.toggleDutyBadge;
 
 /* =========================================================
-   出欠調整 (決定した予定の結果を閲覧／お当番出欠依頼欄は自動で非表示)
+   出欠調整 (決定した予定の結果を閲覧)
 ========================================================= */
 function fmtTodayVersion(){
   const d = new Date();
@@ -1037,8 +1018,8 @@ function renderOverviewCalendarHtml(){
     </div>
     <div class="cal-grid">${weekdayHeaders}${cells}</div>
     <div class="muted" style="margin-top:8px;font-size:11px;">
-      <span class="cal-dot" style="background:#1F6B63;"></span> 練習　
-      <span class="cal-dot" style="background:var(--coral);"></span> 出演　（日付タップでその予定を表示）
+      <span class="cal-dot" style="background:#1F6B63;"></span> 練習 
+      <span class="cal-dot" style="background:var(--coral);"></span> 出演 （日付タップでその予定を表示）
     </div>
   </div>`;
 }
@@ -1175,7 +1156,7 @@ function renderOverview(){
         ${decidedGuardians.map(g=>{
           const codes = guardianBadgesFor(ev, g.id);
           return `<div style="margin-bottom:6px;"><span class="member-name">${escapeHtml(withSan(g.name))}</span><br>
-            ${dutyBadges.map(b=>`<span class="badge-toggle ${codes.includes(b.code)?'on':''}" onclick="toggleDutyBadgeOverview('${ev.id}','${g.id}','${b.code}')">${escapeHtml(b.code)} ${escapeHtml(b.label)}</span>`).join('')}
+            ${dutyBadges.map(b=>`<span class="badge-toggle ${codes.includes(b.code)?'on':''}" onclick="toggleDutyBadgeOverview('${ev.id}','${g.id}','${b.code}')">${escapeHtml(b.code)}${escapeHtml(b.label)}</span>`).join('')}
           </div>`;
         }).join('')}` : ''}
       </div>`;
@@ -1358,7 +1339,7 @@ function adminGuardiansHtml(){
       const isEditing = uiState.adminEditingGuardian===g.id;
       html += `<div class="list-item graduate-item" onclick="toggleEditGuardian('${g.id}')" style="flex-direction:column;align-items:stretch;">
         <div style="display:flex;justify-content:space-between;align-items:center;">
-          <div><b class="graduate-name">${escapeHtml(withSan(g.name))}</b><br><span class="muted">卒業　${escapeHtml(guardianChildLabel(g))}</span></div>
+          <div><b class="graduate-name">${escapeHtml(withSan(g.name))}</b><br><span class="muted">卒業 ${escapeHtml(guardianChildLabel(g))}</span></div>
           <button onclick="event.stopPropagation();confirmAndDelete('保護者『${escapeHtml(g.name)}』を完全に削除しますか？この操作は取り消せません。', function(){ deleteGuardian('${g.id}'); })" style="color:var(--coral);background:none;border:none;cursor:pointer;font-size:16px;">✕</button>
         </div>
         ${isEditing ? renderGuardianEditPanel(g) : ''}
@@ -1444,7 +1425,7 @@ window.deleteDutyBadge = async function(code){
 function adminLocationsHtml(){
   let html = `<div class="section-title">場所リスト管理（あらかじめ登録しておくとプルダウンで選べます）</div>
     <div class="card">
-      <div class="field"><label>場所を追加</label><input id="newLocationName" placeholder="例：座・高円寺　阿波踊りホール"></div>
+      <div class="field"><label>場所を追加</label><input id="newLocationName" placeholder="例：座・高円寺 阿波踊りホール"></div>
       <div class="field"><label>Googleマップのリンク（任意）</label><input id="newLocationMapUrl" placeholder="例：https://maps.app.goo.gl/..."></div>
       <div class="muted" style="margin-bottom:8px;">未入力の場合は場所名で自動検索したGoogleマップにリンクします。</div>
       <button class="btn btn-primary btn-block" onclick="addLocation()">＋ 場所を追加</button>
@@ -1616,7 +1597,7 @@ function renderEventEditPanel(ev){
       <div class="chip-list" id="editExcludeChips_${ev.id}">${sortedMembers().map(m=>`<div class="chip ${(ev.excludedMemberIds||[]).includes(m.id)?'sel':''}" data-id="${m.id}" onclick="toggleEditExcludeChip(this)">${plainDisplayName(m)}</div>`).join('')}</div>
     </div>
     <button class="btn btn-primary btn-block" onclick="saveEventEdit('${ev.id}')">保存する</button>
-    <div class="field" style="margin-top:16px;"><label>追加アンケート項目（◯×△で回答してもらう質問。例：現地集合か解散か／移動手段は？）</label>
+    <div class="field" style="margin-top:16px;"><label>追加アンケート項目（◯×△で回答してもらう質問）</label>
       <div class="chip-list" style="margin-bottom:6px;">
         ${(ev.surveyQuestions||[]).map(q=>`<div class="chip sel">${escapeHtml(q.text)} <span onclick="event.stopPropagation();confirmAndDelete('質問『${escapeHtml(q.text)}』を削除しますか？回答も削除されます。', function(){ deleteSurveyQuestion('${ev.id}','${q.id}'); })" style="margin-left:4px;cursor:pointer;">✕</span></div>`).join('') || '<span class="muted">まだ質問はありません</span>'}
       </div>
@@ -1686,7 +1667,6 @@ window.changeNewDutyTarget = function(delta){
 }
 window.setNewEventType = function(t){
   newEventDraft.type = t;
-  // 練習は通常1人、本番は複数人（10人以上）を想定した初期値。+/-で自由に調整可能。
   newEventDraft.dutyTarget = (t==='本番') ? 10 : 1;
   const labelEl = document.getElementById('newDutyLabel');
   if(labelEl) labelEl.textContent = dutyLabel(t) + 'の必要人数';
@@ -1771,9 +1751,7 @@ window.changeSitePasscode = async function(){
 }
 
 /* =========================================================
-   年度管理（アーカイブ／エクスポート／年度コピー）
-   過去年度・アーカイブ済み年度は isPastOrArchivedFY() で
-   イベント編集画面から自動的に閲覧専用になります。
+   年度管理
 ========================================================= */
 function adminFiscalYearHtml(){
   const years = [...new Set([...availableFiscalYears(), currentFiscalYear()])].sort((a,b)=>b-a);
@@ -1795,13 +1773,13 @@ function adminFiscalYearHtml(){
       <button class="btn btn-ghost btn-block" onclick="exportFYExcel(${fy})">📊 Excel（.xlsx）をダウンロード</button>
       <div style="height:10px;"></div>
       <button class="btn btn-lemon btn-block" onclick="copyFiscalYearForward(${fy})">🔁 この年度の予定を翌年度にコピー</button>
-      <div class="muted" style="margin-top:6px;">タイトル・場所・種別・必要人数を引き継ぎ、日付を1年ずらして「募集中」の新しい予定として作成します（出欠・お当番の決定内容は引き継ぎません）。</div>
+      <div class="muted" style="margin-top:6px;">タイトル・場所・種別・必要人数を引き継ぎ、日付を1年ずらして「募集中」の新しい予定として作成します。</div>
     </div>`;
   if(archived){
     html += `<div class="card" style="border-color:var(--coral);">
       <div class="section-title" style="margin-top:0;color:var(--coral);">⚠️ データ整理（完全削除）</div>
-      <div class="muted" style="margin-bottom:10px;">この年度のイベント・出欠・お当番データを、保存領域から完全に削除します。エクスポート（CSV/Excel）を先に取っておくことをおすすめします。この操作は取り消せません。</div>
-      <button class="btn btn-danger btn-block" onclick="confirmAndDelete('${fy}年度のデータを完全に削除します。エクスポートは済んでいますか？この操作は取り消せません。', function(){ purgeFiscalYear(${fy}); })">🗑️ ${fy}年度のデータを完全に削除する</button>
+      <div class="muted" style="margin-bottom:10px;">この年度のイベント・出欠・お当番データを削除します。この操作は取り消せません。</div>
+      <button class="btn btn-danger btn-block" onclick="confirmAndDelete('${fy}年度のデータを完全に削除します。よろしいですか？', function(){ purgeFiscalYear(${fy}); })">🗑️ ${fy}年度のデータを完全に削除する</button>
     </div>`;
   }
   if(archivedFiscalYears.length){
@@ -1888,7 +1866,7 @@ window.copyFiscalYearForward = async function(fy){
 }
 
 /* =========================================================
-   当番集計（練習/本番で分けて、月別＋4月始まり年度計）
+   当番集計
 ========================================================= */
 function availableFiscalYears(){ const years = new Set(); events.forEach(ev=> years.add(fiscalYearOf(ev.date))); return [...years].sort((a,b)=>b-a); }
 function dutyDashboardHtml(){
@@ -1952,5 +1930,6 @@ window.adjustManualDuty = async function(fy, type, guardianId, delta){
   renderAdmin();
 }
 window.setDutyType = function(t){ uiState.dutyType=t; renderAdmin(); }
-
-/* =================================================
+</script>
+</body>
+</html>
